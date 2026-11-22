@@ -1,0 +1,44 @@
+## Suggestions/Improvements
+
+Version one to have snapshot for saving note versions [save compute]
+Version two to have diff for saving note versions [save space]
+
+Version one: Subtle dot when typing and not prevent typing when syncing between a device which was offline getting online, mid typing
+
+Version two: should have payments: ksh 20/ month for compute and making things run. Majorly for supporting my work. It's also just too cheap
+Version two: If someone is generous enough, I'll add my mpesa number: 0757464904
+
+Version two: personal notes shouldn't be kept for too long list, but not deleted too. Too long it becomes overwhelming and easy to loose track on what's really important to someone
+Intentionally limit the user and force them to archieve some notes. Archieve notes often to solve on that issue
+Have a notification, named I'm moving this notes over to this other place to keep things neat and tidy for clean slate start
+
+Help me think of how to make it easy(atomic habit way) to review notes(weekly, daily, monthly, quaterly)
+Set remainders and follow strictly. Say have a pop up on screen like a notification then open the app by default where the user "notes to be reviewd" are
+Blocking distracting apps, not the whole device, with a minimum time gate before you can snooze it
+
+Have something for archieving notes automatically
+Have a notification, say "Moving notes to archieve do review" with remainders for then move over to archieve. This is to keep notes short, neat, tidy helping them become more focused on what happens. By default you could move it after 3 days, 24 hrs or 1 week, depending on how often someone takes notes
+
+## New knowledge
+
+Understand sorting: custom drag feature, newest first, recently edited first
+
+2 syncs, one from server, one from local device DB. It's a job that runs after 'n' seconds
+Tools/tech to achieve sync
+
+- Android: Room, WorkManager, Retrofit
+- Web: IndexedDB, Fetch, service worker
+
+Sync options
+
+1. keep latest
+2. preserve both
+3. ask the user
+4. try to merge
+
+New Tools discovered:
+
+- SQLite's FTS5 (for searching)
+- IndexDB (browser storage)
+- Dexie(Wrapper to talk to IndexDB on sync) vs IndexDB
+- WorkManager & AlarmManager on OS(sending remainder/ alarm/ notification)
