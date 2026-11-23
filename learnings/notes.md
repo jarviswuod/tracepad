@@ -65,3 +65,14 @@ server use maven.. gradle
 inspo repo: https://github.com/jarviswuod/improvedBillingSystem
 
 Relevant tables. models for the project
+
+## More added
+
+Security
+Testing. both generating and running tests plus manually testing it myself
+System design/ system engineering
+
+Steps for building
+
+- Schema blueprint should be done right first
+- Others follow

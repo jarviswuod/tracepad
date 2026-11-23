@@ -525,84 +525,50 @@ How the folders depend on each other:
 
 ## 18. Version 2 flows, from your notes
 
-### 18.1 Versions stored as diffs
-
-| Possibility              | What happens                                                                                                                                        | Tech                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Saving a new version     | Only the change from the parent is stored.                                                                                                          | `diff-match-patch` (web), `java-diff-utils` (server), a Kotlin port on Android |
-| Every 10th version       | A full snapshot is stored anyway, so rebuilding a note never walks a long chain and one bad diff can't spoil everything after it. **Proposed**.     | Snapshot "keyframes"                                                           |
-| Opening an old version   | Start at the nearest full snapshot, apply the diffs after it.                                                                                       | —                                                                              |
-| Branches and conflicts   | A conflict only when both were offline, each edited the same note, and the parent moved. Timestamps decide. Each diff stays against its own parent. | Parent links                                                                   |
-| Notes saved in version 1 | Stay as snapshots and still open. A background job can shrink old ones later. **Proposed**.                                                         | Migration job                                                                  |
-| Checking for damage      | Each version stores a checksum of its full text. A mismatch falls back to the nearest snapshot and flags the note.                                  | SHA-256                                                                        |
-
-### 18.2 Payments: KSh 20 a month
+### 18.1 Payments: KSh 20 a month
 
 | Possibility                   | What happens                                                                                                                                                                             | Tech                                                   |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| What paying unlocks           | **Proposed**: free = everything on one device. Paid = sync across devices, server reminders, and the backup on the server. That is the part that costs money to run.                     | Feature flag on the account                            |
 | Paying                        | Tracepad sends an M-Pesa prompt to your phone. You enter your PIN.                                                                                                                       | Safaricom Daraja API, Lipa Na M-Pesa Online (STK Push) |
 | Payment confirmed             | Safaricom calls the server back. The account is marked paid until the same date next month.                                                                                              | Daraja callback to a public HTTPS URL                  |
 | Payment fails or is cancelled | Nothing changes. Try again.                                                                                                                                                              | Callback result code                                   |
 | Next month                    | A reminder three days before, then a new prompt on the due date. Automatic monthly charging needs M-Pesa Ratiba (standing orders). Check with Safaricom whether your account can use it. | Scheduled job                                          |
-| Not paid after the due date   | 7 days of grace. Then sync stops, and nothing is deleted. Notes stay on each device and can still be exported. **Proposed**.                                                             | —                                                      |
-| Supporting you on top of that | A "Support Tracepad" page with an M-Pesa Till or Paybill. **Proposed**: a till number rather than your personal phone number, which stays private and keeps the records separate.        | Buy Goods till                                         |
+| Not paid after the due date   | You can **ONLY** create notes. Sync works, you can't view, archieve, search, pin or delete notes.                                                                                        | —                                                      |
+| Supporting you on top of that | A "Support Tracepad" page with an M-Pesa Till, Paybill, or pochi la biashara                                                                                                             | Buy Goods till                                         |
 | Android app on Google Play    | Google Play has its own rules for subscriptions sold inside apps. Check its payments policy before putting M-Pesa inside the Android app. Paying on the website is not affected.         | Google Play payments policy                            |
 
 The Daraja callback needs a public HTTPS address, so payments come after the server is hosted online.
 
-### 18.3 Keeping the list short
+### 18.2 Keeping the list short
 
-| Possibility              | What happens                                                                                                                                                         | Tech                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Active-note limit        | **Proposed**: a soft cap of 30 active notes. Past it, the board says "30 notes, time to archive a few" and opens the review screen. Pinned notes count.              | Count query                                 |
-| Auto-archive timing      | Chosen from how often you write: most days → after 24 hours untouched, a few times a week → after 3 days, less → after 1 week. You can override it in settings.      | Average notes per day over the last 30 days |
-| Before anything moves    | A notification: "Moving 6 notes to the archive tomorrow for a clean slate. Review them?" Tapping opens the review screen.                                            | Notifications                               |
-| What never auto-archives | Pinned notes, notes with a future reminder, notes in a conflict, and notes edited in the last day.                                                                   | Rules in `domain/`                          |
-| After the move           | Each note gets a history entry: "Auto-archived". One tap restores any of them.                                                                                       | History events                              |
-| Nothing is deleted       | Archive only hides. Search leaves archived notes out unless the switch next to the search box is on; when it is, they are marked "Archived". Trashed notes stay out. | —                                           |
+| Possibility              | What happens                                                                                                                                                                                                                                                         | Tech                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Active-note limit        | A soft cap of 12 - 15 active notes. Past it, the board says "12 notes, time to archive some" and opens the review screen. Pinned notes count & should be archieved as pinned. Default active notes is 12. You can override limit in settings. Max is 15 active notes | Count query                                 |
+| Auto-archive timing      | Chosen from how often you write: most days → after 24 hours untouched, a few times a week → after 3 days, less → after 1 week. You can override it in settings. Default auto-archive time is 30 days                                                                 | Average notes per day over the last 30 days |
+| Before anything moves    | A notification: "Moving 6 notes to the archive tomorrow for a clean slate. Review them?" Tapping opens the review screen. Else archive anyways                                                                                                                       | Notifications                               |
+| What never auto-archives | Notes with a future reminder, notes in a conflict, and notes edited in the last day and current day.                                                                                                                                                                 | Rules in `domain/`                          |
+| After the move           | Each note gets a history entry: "Auto-archived". One tap restores any of them.                                                                                                                                                                                       | History events                              |
+| Nothing is deleted       | Archive only hides. Search leaves archived notes out unless the switch next to the search box is on; when it is, they are marked "Archived". Trashed notes stay out.                                                                                                 | —                                           |
 
-### 18.4 Review habits
+### 18.3 Review habits
 
 Built on the four rules from _Atomic Habits_: make it obvious, attractive, easy, and satisfying.
 
-| Possibility                   | What happens                                                                                                                                   | Tech                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| **Obvious**: pick a cue       | You choose when: daily, weekly, monthly, or quarterly, and a time tied to something you already do, like "after morning coffee".               | Review schedule on the account               |
-| The reminder fires            | A notification. Tapping it opens Tracepad straight on "Notes to review", not the board.                                                        | Reminders + deep link to `/review`           |
-| **Easy**: small batches       | At most 5 notes per review. Each one has single-tap choices: Keep, Archive, Done, Remind me later. A review takes about two minutes.           | Review screen                                |
-| **Attractive**: what comes up | Daily: notes from the last day. Weekly: the week's notes. Monthly and quarterly: the oldest active notes, and archived notes with no reminder. | Queries by date                              |
-| **Satisfying**: finishing     | "Clean slate: 4 archived, 1 kept", plus a streak count.                                                                                        | Streak stored per account                    |
-| Skipping                      | The streak resets. No guilt messages. The next review shows the same notes.                                                                    | —                                            |
-| Strict mode                   | A full-screen reminder that opens the review screen. It can be snoozed. Skipping can be done only from inside the review.                      | Android full-screen intent; web notification |
+| Possibility               | What happens                                                                                                                                                                            | Tech                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Pick how often you review | Monthly, quaterly, semi-anually & anually. Default monthly. Adjust in settings                                                                                                          | Review schedule on the account               |
+| The reminder fires        | A notification. Tapping it opens Tracepad straight on "Notes to review", not the board.                                                                                                 | Reminders + deep link to `/review`           |
+| Skipping                  | The streak resets. No guilt messages. The next review shows the same notes.                                                                                                             | —                                            |
+| Strict mode               | A full-screen reminder that opens the review screen. It can be ONLY snoozed after 30 seconds since push. Adjust duration in settings. Skipping can be done only from inside the review. | Android full-screen intent; web notification |
 
-### 18.5 Blocking distracting apps (Android only)
+### 18.4 The rest of version 2
 
-From your notes and `docs/Procrastination-Blocker-Idea.md`. This one is close to a separate product, so it's last in version 2.
-
-| Possibility                 | What happens                                                                                               | Tech                                                                       |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Choose distracting apps     | Pick from the installed list.                                                                              | Package list                                                               |
-| A review or reminder is due | Opening one of those apps shows a Tracepad screen in front of it instead.                                  | Usage Access to see which app is open, plus a screen drawn over other apps |
-| Snooze                      | Possible only after a minimum wait, for example 2 minutes.                                                 | Timer                                                                      |
-| Do the review               | The block lifts at once.                                                                                   | —                                                                          |
-| Skipping for good           | Not possible. You can only snooze.                                                                         | —                                                                          |
-| The whole phone             | Never locked. Only the apps you chose.                                                                     | —                                                                          |
-| Google Play review          | These permissions get extra scrutiny from Google Play. Expect to explain the feature in the store listing. | Play policy declarations                                                   |
-| Web                         | Not possible. Browsers can't block other apps.                                                             | —                                                                          |
-
-### 18.6 The rest of version 2
-
-| Feature                     | What changes                                                                                   | Tech                                                  |
-| --------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Web database on Dexie       | Rewrite `web/src/data/` on Dexie. Screens don't change. Search can use Dexie's query helpers.  | Dexie                                                 |
-| Google sign-in              | A second login button. The same account if the email matches.                                  | Spring Security OAuth2 client                         |
-| Email verification          | A confirmation link at signup.                                                                 | Spring Mail + a real mail service                     |
-| Custom drag order           | Drag cards into your own order, synced.                                                        | Fractional ordering key, `dnd-kit`                    |
-| Repeating reminders         | Store the rule. Schedule only the next one, and set the following one after it fires.          | Reminder rule field                                   |
-| Sharing with a collaborator | A shared note is visible to both accounts. Pin, color, and labels stay private to each person. | Share table, permission checks in sync                |
-| Merging a conflict          | Combine both texts into a third version with two parents, only when you ask.                   | Three-way merge with `diff-match-patch`               |
-| Hosted online               | The server on a real host with HTTPS, so phones work anywhere. Needed before payments.         | A VPS or a container host, managed Postgres, a domain |
+| Feature               | What changes                                                                                  | Tech                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Web database on Dexie | Rewrite `web/src/data/` on Dexie. Screens don't change. Search can use Dexie's query helpers. | Dexie                                                 |
+| Google sign-in        | A second login button. The same account if the email matches.                                 | Spring Security OAuth2 client                         |
+| Email verification    | A confirmation link at signup.                                                                | Spring Mail + a real mail service                     |
+| Hosted online         | The server on a real host with HTTPS, so phones work anywhere. Needed before payments.        | A VPS or a container host, managed Postgres, a domain |
 
 ---
 
@@ -669,41 +635,10 @@ Version 1 is done when the web app and the Android app both pass every flow in s
 
 Ordered so each step only depends on earlier ones.
 
-1. **Diff storage** with full snapshots every 10 versions and checksums (18.1).
-2. **Dexie** in place of idb on the web (18.6).
-3. **Custom drag order**, then **repeating reminders** (18.6).
-4. **Hosting online** with HTTPS, managed Postgres, and email verification (18.6).
-5. **Google sign-in** (18.6).
-6. **Payments**: Daraja sandbox first, then live, then the support page (18.2).
-7. **Keeping the list short**: the active-note limit and auto-archive (18.3).
-8. **Review habits**: schedules, the review screen, streaks, strict mode (18.4).
-9. **Sharing** with a collaborator (18.6).
-10. **Merging** a conflict on request (18.6).
-11. **App blocking** on Android (18.5).
-
----
-
-## 21. Decisions to confirm before the go-ahead
-
-| #   | Question                                             | Proposed answer                                                                           |
-| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 1   | Can Tracepad be used without an account?             | Yes. A guest's notes upload when they sign in.                                            |
-| 2   | Email verification at signup?                        | Not in v1. Add it when the server is hosted.                                              |
-| 3   | Forgot password in v1?                               | Yes, with Mailpit while local.                                                            |
-| 4   | Delete account in v1?                                | Yes.                                                                                      |
-| 5   | A brand-new empty note?                              | Thrown away, no note created.                                                             |
-| 6   | Leaving a note without changing it?                  | No new version.                                                                           |
-| 7   | The same note open in two tabs?                      | The second one is read-only.                                                              |
-| 8   | A reminder on a trashed note?                        | Paused, back on restore.                                                                  |
-| 9   | Repeating reminders?                                 | Not in v1.                                                                                |
-| 10  | Label and color filters in search?                   | Yes, in v1.                                                                               |
-| 11  | Edit on one device after another deleted it forever? | The note comes back, and you're told.                                                     |
-| 12  | How often sync runs while the app is open?           | After each save, on reconnect, on open, and every 30 seconds.                             |
-| 13  | Sort orders in v1?                                   | Recently edited and newest created. Custom drag in v2.                                    |
-| 14  | A full snapshot how often once diffs arrive?         | Every 10th version.                                                                       |
-| 15  | What does KSh 20 a month unlock?                     | Sync across devices, server reminders, and the server backup. One device stays free.      |
-| 16  | Not paid after the due date?                         | 7 days of grace, then sync stops. Nothing is deleted.                                     |
-| 17  | Support payments to your personal number?            | A Till or Paybill number instead.                                                         |
-| 18  | Active-note limit?                                   | A soft cap of 30.                                                                         |
-| 19  | Auto-archive timing?                                 | 24 hours, 3 days, or 1 week, chosen from how often you write, and changeable in settings. |
-| 20  | Notes per review?                                    | At most 5.                                                                                |
+1. **Dexie** in place of idb on the web.
+2. **Custom drag order**, then **repeating reminders**.
+3. **Hosting online** with HTTPS, managed Postgres, and email verification.
+4. **Google sign-in**.
+5. **Payments**: Daraja sandbox first, then live, then the support page.
+6. **Keeping the list short**: the active-note limit and auto-archive.
+7. **Sharing** with a collaborator.
