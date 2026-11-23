@@ -42,3 +42,26 @@ New Tools discovered:
 - IndexDB (browser storage)
 - Dexie(Wrapper to talk to IndexDB on sync) vs IndexDB
 - WorkManager & AlarmManager on OS(sending remainder/ alarm/ notification)
+
+## Adding
+
+UI should look like google keep, both android and web versions
+Have a tutorial/ illustration of how to use the app/ website for first time users
+Have test cases for every feature added both good and bad cases
+
+Have some dummy data for first time users, they have the option to delete it or just leave it as the first and only note they found. It should have 2 version histories, no labels and just default colors. creation time should be tomorror 22 nov and edtis happens one hour later (30mins first, then 30 mins second version)
+
+Add email verification part too, I dont want people to just have dummy emails/ invalid emails in the app/website DB (Just have serious people access and try out the app)
+password reset should be avaiable
+
+How about the tiny decision say use mvc pattern for server, mockito and junit 5. I kinda wanna know those decisions you made for almost every thing. say I recommneded this but then we have this and this options too that some people use
+
+Note versions cannot be restored
+
+Move to settings:
+Left out by default. A switch next to the search box includes them. When included, each one is marked "Archived".
+
+server use maven.. gradle
+inspo repo: https://github.com/jarviswuod/improvedBillingSystem
+
+Relevant tables. models for the project
