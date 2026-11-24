@@ -122,21 +122,21 @@ sequenceDiagram
 
 ## 5. Log in, log out, sessions
 
-| Possibility                                         | What happens                                                                                                 | Tech                                            |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| Correct login, first time on this device            | A full download from the start: bookmark = 0. The device ID is created.                                      | Pull endpoint, cursor                           |
-| Correct login, guest notes on this device           | Guest notes join the account and upload. Nothing is replaced.                                                | Outbox upload                                   |
-| Wrong password                                      | "Email or password is wrong." It doesn't say which one.                                                      | Spring Security                                 |
-| Many wrong tries                                    | Locked for a few minutes.                                                                                    | Rate limit on the login endpoint (Bucket4j)     |
-| Access token expires (about 15 minutes)             | Renewed quietly with the refresh token. You notice nothing.                                                  | Refresh endpoint, httpOnly cookie               |
-| Refresh token expires (about 30 days) while offline | You keep working locally. Sync pauses.                                                                       | Outbox keeps growing                            |
-| Refresh token expires, back online                  | "Please log in again." Unsent changes wait and upload after login.                                           | Login screen, outbox kept                       |
-| Forgot password                                     | An email with a one-time link. Setting a new password logs out every device.                                 | Spring Mail, Mailpit locally, reset token table |
-| Log out with everything synced                      | Local notes are wiped from this device. They're safe on the server.                                          | Clear IndexedDB / Room                          |
-| Log out with unsent changes                         | A warning, "3 changes haven't synced", with the choice to sync first or log out anyway.                      | Outbox count                                    |
-| Log out while offline                               | Same warning. Logging out anyway loses those changes.                                                        | Outbox count                                    |
-| Two accounts on one device                          | Not supported in v1. Log out first.                                                                          | —                                               |
-| Delete account                                      | **Proposed:** in v1. It asks for your password, deletes every note and version on the server, then logs out. | Delete endpoint, cascade delete                 |
+| Possibility                                         | What happens                                                                                       | Tech                                            |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Correct login, first time on this device            | A full download from the start: bookmark = 0. The device ID is created.                            | Pull endpoint, cursor                           |
+| Correct login, guest notes on this device           | Guest notes join the account and upload. Nothing is replaced.                                      | Outbox upload                                   |
+| Wrong password                                      | "Email or password is wrong." It doesn't say which one.                                            | Spring Security                                 |
+| Many wrong tries                                    | Locked for a few minutes.                                                                          | Rate limit on the login endpoint (Bucket4j)     |
+| Access token expires (about 15 minutes)             | Renewed quietly with the refresh token. You notice nothing.                                        | Refresh endpoint, httpOnly cookie               |
+| Refresh token expires (about 30 days) while offline | You keep working locally. Sync pauses.                                                             | Outbox keeps growing                            |
+| Refresh token expires, back online                  | "Please log in again." Unsent changes wait and upload after login.                                 | Login screen, outbox kept                       |
+| Forgot password                                     | An email with a one-time link. Setting a new password logs out every device.                       | Spring Mail, Mailpit locally, reset token table |
+| Log out with everything synced                      | Local notes are wiped from this device. They're safe on the server.                                | Clear IndexedDB / Room                          |
+| Log out with unsent changes                         | A warning, "3 changes haven't synced", with the choice to sync first or log out anyway.            | Outbox count                                    |
+| Log out while offline                               | Same warning. Logging out anyway loses those changes.                                              | Outbox count                                    |
+| Two accounts on one device                          | Not supported in v1. Log out first.                                                                | —                                               |
+| Delete account                                      | Asks for your password. The account is marked deleted and stays in the database. Then it logs out. | Soft delete                                     |
 
 ---
 
@@ -228,19 +228,19 @@ flowchart TD
 
 None of these cut a text version. Each one except color adds a small entry to history.
 
-| Possibility                       | What happens                                                           | Tech                             |
-| --------------------------------- | ---------------------------------------------------------------------- | -------------------------------- |
-| Pin or unpin                      | The note moves to or from the top section. History entry.              | Note row + event                 |
-| Archive                           | Hidden from the board, still in search and label views. History entry. | `is_archived` + event            |
-| Unarchive                         | Back on the board. History entry.                                      | Event                            |
-| Change color                      | The card color changes. No history entry.                              | Note row                         |
-| Add a label to a note             | Chip on the card. History entry.                                       | Join row + event                 |
-| Remove a label                    | Chip gone. History entry.                                              | Join row + event                 |
-| Create a label                    | It appears in the sidebar.                                             | Label row                        |
-| Rename a label                    | Every note shows the new name. No entry per note.                      | Label row                        |
-| Delete a label                    | Removed from every note. Notes stay.                                   | Delete join rows                 |
-| Two devices pin and unpin offline | The later change wins. Both entries stay in history.                   | Timestamp comparison during sync |
-| Two devices rename the same label | The later name wins.                                                   | Same                             |
+| Possibility                       | What happens                                                                                                | Tech                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Pin or unpin                      | The note moves to or from the top section. History entry.                                                   | Note row + event                 |
+| Archive                           | Hidden from the board. Search leaves them out unless the switch is on. Still in label views. History entry. | `is_archived` + event            |
+| Unarchive                         | Back on the board. History entry.                                                                           | Event                            |
+| Change color                      | The card color changes. No history entry.                                                                   | Note row                         |
+| Add a label to a note             | Chip on the card. History entry.                                                                            | Join row + event                 |
+| Remove a label                    | Chip gone. History entry.                                                                                   | Join row + event                 |
+| Create a label                    | It appears in the sidebar.                                                                                  | Label row                        |
+| Rename a label                    | Every note shows the new name. No entry per note.                                                           | Label row                        |
+| Delete a label                    | Removed from every note. Notes stay.                                                                        | Delete join rows                 |
+| Two devices pin and unpin offline | The later change wins. Both entries stay in history.                                                        | Timestamp comparison during sync |
+| Two devices rename the same label | The later name wins.                                                                                        | Same                             |
 
 ---
 
@@ -259,15 +259,15 @@ None of these cut a text version. Each one except color adds a small entry to hi
 
 ## 12. Search
 
-| Possibility              | What happens                                                                                                      | Tech                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Type a word              | Notes whose title, body, or checklist item contains it, case ignored.                                             | Web: scan in JavaScript. Android: SQL `LIKE '%word%'` |
-| Archived notes           | Left out by default. A switch next to the search box includes them. When included, each one is marked "Archived". | —                                                     |
-| Trashed notes            | Not included.                                                                                                     | —                                                     |
-| Old versions             | Not searched. Only the current text.                                                                              | —                                                     |
-| No results               | "No notes match".                                                                                                 | —                                                     |
-| Offline                  | Works the same. Search never uses the server.                                                                     | Local only                                            |
-| Filter by label or color | **Proposed** for v1: label and color filters next to the search box.                                              | Index on color, join on labels                        |
+| Possibility     | What happens                                                                                                      | Tech                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Type a word     | Notes whose title, body, or checklist item contains it, case ignored.                                             | Web: scan in JavaScript. Android: SQL `LIKE '%word%'` |
+| Archived notes  | Left out by default. A switch next to the search box includes them. When included, each one is marked "Archived". | —                                                     |
+| Trashed notes   | Not included.                                                                                                     | —                                                     |
+| Old versions    | Not searched. Only the current text.                                                                              | —                                                     |
+| No results      | "No notes match".                                                                                                 | —                                                     |
+| Offline         | Works the same. Search never uses the server.                                                                     | Local only                                            |
+| Filter by label | Search stays inside the label you're viewing, and outside any label it covers everything                          | Join on labels                                        |
 
 ---
 
@@ -327,7 +327,7 @@ sequenceDiagram
     Srv->>Log: Append, give each a number
     Srv-->>Out: Accepted
     Out->>Out: Mark sent
-    Local->>Srv: GET /sync/pull?after=bookmark
+    Local->>Srv: GET /sync/pull, newer rows even before the bookmark
     Srv-->>Local: New rows + new bookmark
     Note over Local: On pull, accept any row that is newer than what the device already has locally, even if that row's number is before the current bookmark. The bookmark still advances forward as usual. It is not a hard cutoff that silently drops fresher local-state changes
     Local->>Local: Apply in one transaction
@@ -404,18 +404,18 @@ flowchart TD
     trashed -->|30 days pass| gone
 ```
 
-| Possibility                                    | What happens                                                                                                             | Tech                                   |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
-| Move to trash                                  | pin hidden, not removed. Keep everything else. Hidden from the board and search. `trashed_at` set. History entry. Syncs. | Note row + event                       |
-| Restore from trash                             | Back where it was, archived or not, pinned or not and backeground color. History entry.                                  | Clear `trashed_at`                     |
-| Delete forever, one note                       | Asks first. The note, every version, every history entry, and its reminder are removed on this device and the server.    | Hard delete + tombstone                |
-| Empty the trash                                | Same as above for everything in the trash.                                                                               | —                                      |
-| 30 days pass                                   | The server removes it with a daily job. Devices remove it on their next sync.                                            | Spring `@Scheduled` job                |
-| 30 days pass on a device that's offline        | The device removes it locally at the next open, and the server agrees later.                                             | Startup cleanup                        |
-| An offline device still has it after it's gone | A tombstone tells it to remove the note on the next pull. Tombstones are kept for 60 days.                               | Tombstone rows                         |
-| Undo right after trashing                      | A snackbar with "Undo" for a few seconds.                                                                                | —                                      |
-| Bulk select and trash                          | Each note gets its own outbox row.                                                                                       | —                                      |
-| Account deleted                                | Everything on the server, then this device. Other devices are logged out on their next sync.                             | Cascade delete, refresh tokens revoked |
+| Possibility                                    | What happens                                                                                                             | Tech                                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| Move to trash                                  | pin hidden, not removed. Keep everything else. Hidden from the board and search. `trashed_at` set. History entry. Syncs. | Note row + event                    |
+| Restore from trash                             | Back where it was, archived or not, pinned or not and backeground color. History entry.                                  | Clear `trashed_at`                  |
+| Delete forever, one note                       | Asks first. The note, every version, every history entry, and its reminder are removed on this device and the server.    | Hard delete + tombstone             |
+| Empty the trash                                | Same as above for everything in the trash.                                                                               | —                                   |
+| 30 days pass                                   | The server removes it with a daily job. Devices remove it on their next sync.                                            | Spring `@Scheduled` job             |
+| 30 days pass on a device that's offline        | The device removes it locally at the next open, and the server agrees later.                                             | Startup cleanup                     |
+| An offline device still has it after it's gone | A tombstone tells it to remove the note on the next pull. Tombstones are kept for 60 days.                               | Tombstone rows                      |
+| Undo right after trashing                      | A snackbar with "Undo" for a few seconds.                                                                                | —                                   |
+| Bulk select and trash                          | Each note gets its own outbox row.                                                                                       | —                                   |
+| Account deleted                                | The account is marked deleted and stays in the database. This device logs out. Other devices log out on their next sync. | Soft delete, refresh tokens revoked |
 
 ---
 
@@ -464,7 +464,7 @@ Tracepad/
 │       ├── features/          One folder per screen or feature
 │       │   ├── board/
 │       │   ├── editor/        Autosave timer, Ctrl+S, the saving dot
-│       │   ├── history/       Timeline, compare (jsdiff), restore
+│       │   ├── history/       Timeline, compare (jsdiff), open an old version, read only
 │       │   ├── conflicts/     Green-red compare, pick a version
 │       │   ├── labels/
 │       │   ├── search/
@@ -592,11 +592,11 @@ Each numbered item is one feature: it gets built, tested with automated tests an
 7. The saving dot, and typing that never waits on anything.
 8. Crash recovery: a leftover draft becomes a version on open.
 9. The board: pinned first, two sort orders, Archive, Trash, and Label views.
-10. Version history: timeline, compare in green and red, restore.
+10. Version history: timeline, compare in green and red, open an old version, read only.
 11. Trash: delete, restore, undo, empty the trash, 30-day cleanup.
-12. Pin, archive, color, and labels, with history entries.
+12. Pin, archive, and labels get history entries. Color changes the card and is not a history entry.
 13. Checklists, with tick history entries.
-14. Search, with label and color filters.
+14. Search covers every note by default, and you can optionally open one label first and search only inside it.
 15. Reminders while the tab is open, and missed-reminder notices.
 16. The outbox: every change from steps 6 to 15 already queues a row.
 17. Offline app shell: the service worker, and the "update ready" prompt.
@@ -606,9 +606,9 @@ Each numbered item is one feature: it gets built, tested with automated tests an
 18. `server/` with Spring Boot, Postgres, Flyway, and Testcontainers, plus `docker-compose.yml`.
 19. `contract/openapi.yaml` and fixtures for push and pull.
 20. Register, login, refresh tokens, logout.
-21. Forgot password through Mailpit, and delete account.
+21. Password forgot through Mailpit, delete account is allowed, but it should be soft delete, not entirely from the database.
 22. The push endpoint: change log, duplicate-safe.
-23. The pull endpoint: changes after the bookmark, tombstones.
+23. The pull endpoint: a newer row is kept even when its number is before the bookmark. Tombstones too. The bookmark still advances.
 24. Web sync: push, pull, bookmark, backoff, status icon.
 25. Guest notes joining an account at first sign-in.
 26. Conflicts: detection, badge, compare screen, picking a version.
