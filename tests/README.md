@@ -6,7 +6,7 @@ Run the full test suite from the repository root with:
 ./tests/run-all.sh
 ```
 
-It runs the tests of every part that exists so far and stops at the first failure. Parts that haven't been created yet are skipped.
+It checks the repository skeleton (`tests/repo-skeleton.sh`), then runs the tests of every part that exists so far and stops at the first failure. Parts that haven't been created yet are skipped.
 
 | Part       | What runs                                      | Needs                         |
 | ---------- | ---------------------------------------------- | ----------------------------- |

@@ -4,6 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 ran=0
 
+if [ -f "$root/tests/repo-skeleton.sh" ]; then
+  echo "== skeleton =="
+  bash "$root/tests/repo-skeleton.sh"
+fi
+
 if [ -f "$root/web/package.json" ]; then
   echo "== web =="
   (cd "$root/web" && npm test && npm run e2e)
@@ -23,7 +28,7 @@ if [ -f "$root/android/gradlew" ]; then
 fi
 
 if [ "$ran" -eq 0 ]; then
-  echo "No parts to test yet (web/, server/, android/ don't exist)."
+  echo "No parts to test yet (web/, server/, and android/ have no test runner yet)."
 else
   echo "All tests passed."
 fi
