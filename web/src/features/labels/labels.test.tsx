@@ -74,6 +74,13 @@ function card(): HTMLElement {
   return node as HTMLElement
 }
 
+function openNoteMenu(dialog: HTMLElement, item: string) {
+  const more = within(dialog).getByRole('button', { name: 'More' })
+  if (more.getAttribute('aria-expanded') === 'true') fireEvent.click(more)
+  fireEvent.click(more)
+  fireEvent.click(within(dialog).getByRole('menuitem', { name: item }))
+}
+
 async function historyCounts(db: TracepadDatabase): Promise<Record<string, number>> {
   const rows = await db.getAll('historyEvents')
   const counts: Record<string, number> = {}
@@ -103,13 +110,15 @@ describe('pin, archive, color and labels', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /^Unpin$/ }))
     await waitFor(async () => expect((await db.get('notes', noteId))?.isPinned).toBe(false))
 
+    openNoteMenu(dialog, 'Colors')
     fireEvent.click(within(dialog).getByRole('button', { name: /^Yellow color$/ }))
     await waitFor(async () => expect((await db.get('notes', noteId))?.color).toBe('#fff475'))
     expect(await historyCounts(db)).toEqual({ pinned: 1, unpinned: 1 })
     expect(await db.count('noteVersions')).toBe(1)
 
-    fireEvent.change(within(dialog).getByLabelText('Label name'), { target: { value: 'Work' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: /^Add label$/ }))
+    openNoteMenu(dialog, 'Change labels')
+    fireEvent.change(within(dialog).getByLabelText('Enter label name'), { target: { value: 'Work' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create "Work"' }))
     await waitFor(() => expect(within(dialog).getByRole('checkbox', { name: 'Work' })).toBeChecked())
     expect(card()).toHaveTextContent('Work')
 
@@ -129,6 +138,7 @@ describe('pin, archive, color and labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const renamed = await screen.findByRole('dialog', { name: 'Note' })
+    openNoteMenu(renamed, 'Change labels')
     await waitFor(() => expect(within(renamed).getByRole('checkbox', { name: 'Job' })).toBeChecked())
     fireEvent.click(within(renamed).getByRole('checkbox', { name: 'Job' }))
     await waitFor(() => expect(within(renamed).getByRole('checkbox', { name: 'Job' })).not.toBeChecked())
@@ -150,7 +160,7 @@ describe('pin, archive, color and labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const again = await screen.findByRole('dialog', { name: 'Note' })
-    fireEvent.click(within(again).getByRole('button', { name: /^Archive note$/ }))
+    fireEvent.click(within(again).getByRole('button', { name: 'Archive' }))
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Shopping, Milk', hidden: true })).not.toBeInTheDocument(),
     )
@@ -161,7 +171,7 @@ describe('pin, archive, color and labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const archived = await screen.findByRole('dialog', { name: 'Note' })
-    fireEvent.click(within(archived).getByRole('button', { name: /^Unarchive note$/ }))
+    fireEvent.click(within(archived).getByRole('button', { name: 'Unarchive' }))
     await waitFor(async () => expect((await db.get('notes', noteId))?.isArchived).toBe(false))
     fireEvent.click(within(archived).getByRole('button', { name: /^Close$/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -302,6 +312,7 @@ describe('edit labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const noteDialog = await screen.findByRole('dialog', { name: 'Note' })
+    openNoteMenu(noteDialog, 'Change labels')
     expect(
       within(noteDialog)
         .getAllByRole('checkbox')

@@ -31,6 +31,28 @@
   pointer-events: none;
 }
 
+.editor-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.editor-title-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.editor-pin {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #3c4043;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.15rem 0.15rem;
+}
+
 .editor input,
 .editor textarea {
   border: 0;
@@ -43,6 +65,13 @@
 .editor textarea {
   min-height: 5rem;
   resize: vertical;
+}
+
+.editor textarea.editor-body-expand {
+  box-sizing: border-box;
+  min-height: 1.5rem;
+  resize: none;
+  overflow: hidden;
 }
 
 .editor-actions {

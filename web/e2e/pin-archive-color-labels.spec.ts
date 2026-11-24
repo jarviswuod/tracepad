@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test('pins, archives, colors, then adds, renames and deletes a label', async ({ page }) => {
   test.setTimeout(90_000)
@@ -12,10 +12,12 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   const dialog = page.getByRole('dialog', { name: 'Note' })
   await dialog.getByRole('button', { name: 'Pin', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Archive note', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Archive', exact: true }).click()
+  await chooseMore(dialog, 'Colors')
   await dialog.getByRole('button', { name: 'Yellow color', exact: true }).click()
-  await dialog.getByLabel('Label name').fill('Work')
-  await dialog.getByRole('button', { name: 'Add label', exact: true }).click()
+  await chooseMore(dialog, 'Change labels')
+  await dialog.getByLabel('Enter label name').fill('Work')
+  await dialog.getByRole('button', { name: 'Create "Work"', exact: true }).click()
   await expect(dialog.getByRole('checkbox', { name: 'Work', exact: true })).toBeChecked()
   await expect(nav.getByRole('button', { name: 'Work', exact: true })).toBeVisible()
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
@@ -31,6 +33,7 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   await nav.getByRole('button', { name: 'Notes', exact: true }).click()
   await page.getByRole('button', { name: 'Beta, Berries', exact: true }).click()
   const betaDialog = page.getByRole('dialog', { name: 'Note' })
+  await chooseMore(betaDialog, 'Change labels')
   await betaDialog.getByRole('checkbox', { name: 'Work', exact: true }).click()
   await expect(betaDialog.getByRole('checkbox', { name: 'Work', exact: true })).toBeChecked()
   await betaDialog.getByRole('button', { name: 'Close', exact: true }).click()
@@ -66,7 +69,8 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   await expect(page.getByRole('button', { name: 'Alpha, Apples', exact: true })).not.toContainText('Job')
 
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'History', exact: true }).click()
+  const alphaDialog = page.getByRole('dialog', { name: 'Note' })
+  await chooseMore(alphaDialog, 'Version history')
   const history = page.getByRole('list', { name: 'History' })
   await expect(history.getByText('Pinned', { exact: true })).toBeVisible()
   await expect(history.getByText('Archived', { exact: true })).toBeVisible()
@@ -90,6 +94,13 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   })
   expect(alphaNote).toMatchObject({ isPinned: true, isArchived: true, color: '#fff475' })
 })
+
+async function chooseMore(dialog: Locator, item: string) {
+  const more = dialog.getByRole('button', { name: 'More', exact: true })
+  if ((await more.getAttribute('aria-expanded')) === 'true') await more.click()
+  await more.click()
+  await dialog.getByRole('menuitem', { name: item, exact: true }).click()
+}
 
 async function createNote(page: Page, title: string, body: string) {
   await page.getByRole('button', { name: 'Take a note' }).click()

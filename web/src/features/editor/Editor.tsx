@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { TracepadDatabase } from '../../data/db'
 import { clearDraft, commitNoteText, saveDraft } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
@@ -33,8 +33,14 @@ type EditorProps = {
   trashed?: boolean
   /** Let the screen restore the note, then close it. */
   onRestore?: () => void
-  /** Pin, archive, color and labels. Omitted until the note has a row. */
+  /** Chips and the edited date. Omitted on a new note from "Take a note". */
   actions?: ReactNode
+  /** Pin, on the title's line. Omitted on a new note. */
+  titleAside?: ReactNode
+  /** A saved note uses the modal toolbar instead of Move to trash and History. */
+  showFooter?: boolean
+  /** Grow the body so a long note scrolls in the modal, not inside the field. */
+  expandBody?: boolean
   ref?: Ref<EditorHandle>
 }
 
@@ -60,6 +66,9 @@ export function Editor({
   trashed = false,
   onRestore,
   actions,
+  titleAside,
+  showFooter = true,
+  expandBody = false,
   ref,
 }: EditorProps) {
   // Title and body live here. Draft saves and outbox checks never write them back.
@@ -87,6 +96,7 @@ export function Editor({
   onRestoreRef.current = onRestore
 
   const cardRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const closing = useRef<Promise<void> | null>(null)
@@ -228,6 +238,7 @@ export function Editor({
       const card = cardRef.current
       if (!card || card.contains(target)) return
       if (card.closest('[aria-modal="true"]')?.contains(target)) return
+      if (target instanceof Element && target.closest('.dialog, .dialog-backdrop')) return
       if (target instanceof Element && target.closest('[data-note-id]')) return
       void requestClose()
     }
@@ -252,6 +263,13 @@ export function Editor({
     }
   })
 
+  useLayoutEffect(() => {
+    const element = bodyRef.current
+    if (!element || !expandBody) return
+    element.style.height = 'auto'
+    if (element.scrollHeight > 0) element.style.height = `${element.scrollHeight}px`
+  }, [body, expandBody])
+
   function changeTitle(value: string) {
     textRef.current = { ...textRef.current, title: value }
     setTitle(value)
@@ -266,37 +284,52 @@ export function Editor({
     scheduleDraft()
   }
 
+  const titleField = (
+    <input
+      aria-label="Title"
+      placeholder="Title"
+      value={title}
+      autoFocus
+      onChange={(event) => changeTitle(event.target.value)}
+    />
+  )
+
   return (
     <div className="editor" ref={cardRef} role="group" aria-label="Note">
       <SavingDot state={savingDotState(unsaved, pendingSync)} />
-      <input
-        aria-label="Title"
-        placeholder="Title"
-        value={title}
-        autoFocus
-        onChange={(event) => changeTitle(event.target.value)}
-      />
+      {titleAside ? (
+        <div className="editor-title-row">
+          {titleField}
+          {titleAside}
+        </div>
+      ) : (
+        titleField
+      )}
       <textarea
+        ref={bodyRef}
+        className={expandBody ? 'editor-body-expand' : undefined}
         aria-label="Body"
         placeholder="Take a note"
         value={body}
         onChange={(event) => changeBody(event.target.value)}
       />
       {actions}
-      <div className="editor-actions">
-        {trashed ? (
-          <button type="button" onClick={() => void onRestoreRef.current?.()}>
-            Restore
+      {showFooter ? (
+        <div className="editor-actions">
+          {trashed ? (
+            <button type="button" onClick={() => void onRestoreRef.current?.()}>
+              Restore
+            </button>
+          ) : (
+            <button type="button" onClick={() => void onTrashRef.current()}>
+              Move to trash
+            </button>
+          )}
+          <button type="button" onClick={openHistory}>
+            History
           </button>
-        ) : (
-          <button type="button" onClick={() => void onTrashRef.current()}>
-            Move to trash
-          </button>
-        )}
-        <button type="button" onClick={openHistory}>
-          History
-        </button>
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }

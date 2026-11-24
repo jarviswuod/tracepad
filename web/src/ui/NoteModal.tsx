@@ -21,8 +21,10 @@ type NoteModalProps = {
   returnFocusTo?: () => HTMLElement | null
   /** Text of the button at the bottom right. Notes say "Close"; Edit labels says "Done". */
   closeText?: string
-  /** "note" is the wide centered card. "labels" is the narrow dialog near the top. */
+  /** "note" is the wide card near the top. "labels" is the narrow dialog. */
   size?: 'note' | 'labels'
+  /** Buttons on the left of the bottom bar. Close stays on the right. */
+  toolbar?: ReactNode
   children: ReactNode
 }
 
@@ -59,6 +61,7 @@ export function NoteModal({
   returnFocusTo,
   closeText = 'Close',
   size = 'note',
+  toolbar,
   children,
 }: NoteModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -140,7 +143,8 @@ export function NoteModal({
       >
         <div className="note-modal-body">{children}</div>
         <div className="note-modal-actions">
-          <button type="button" onClick={onClose}>
+          {toolbar}
+          <button type="button" className="note-modal-close" onClick={onClose}>
             {closeText}
           </button>
         </div>

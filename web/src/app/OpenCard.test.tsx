@@ -200,15 +200,17 @@ describe('opening a card', () => {
     expect(screen.getByRole('button', { name: 'Gone, Soon' })).toBeInTheDocument()
   })
 
-  it('keeps Move to trash on an active note', async () => {
+  it('keeps delete inside More on an active note', async () => {
     const db = await open()
     await store(db, note(noteId), 'Shopping', 'Milk')
     await renderAt(db)
 
     const { dialog } = await openCard('Shopping, Milk')
-    expect(within(dialog).getByRole('button', { name: 'Move to trash' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Move to trash' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'History' })).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+    expect(within(dialog).getByRole('menuitem', { name: 'Delete note' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('menuitem', { name: 'Version history' })).toBeInTheDocument()
   })
 
   it('restores an open trashed note, clears a matching undo, and keeps pin and color', async () => {
@@ -217,7 +219,8 @@ describe('opening a card', () => {
     await renderAt(db)
 
     const { dialog } = await openCard('Shopping, Milk')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Move to trash' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Delete note' }))
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Trash' }))

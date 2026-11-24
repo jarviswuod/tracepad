@@ -75,6 +75,11 @@ async function renderHome(db: TracepadDatabase) {
   await waitFor(() => expect(screen.getByRole('button', { name: 'Take a note' })).toBeEnabled())
 }
 
+async function trashOpenNote() {
+  fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete note' }))
+}
+
 function Probe() {
   const [open, setOpen] = useState(true)
   const expire = useCallback(() => setOpen(false), [])
@@ -90,7 +95,7 @@ describe('trash screen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Shopping, Milk' }))
     fireEvent.change(await screen.findByLabelText('Body'), { target: { value: 'Milk and bread' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Move to trash' }))
+    await trashOpenNote()
 
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('button', { name: /Shopping/ })).not.toBeInTheDocument())
@@ -107,7 +112,7 @@ describe('trash screen', () => {
     expect((await db.get('notes', noteId))?.trashedAt).toBeNull()
 
     fireEvent.click(card)
-    fireEvent.click(await screen.findByRole('button', { name: 'Move to trash' }))
+    await trashOpenNote()
     await screen.findByRole('button', { name: 'Undo' })
     fireEvent.click(screen.getByRole('button', { name: 'Trash' }))
     expect(await screen.findByText('30 days left')).toBeInTheDocument()
@@ -123,7 +128,7 @@ describe('trash screen', () => {
     expect(await db.count('noteVersions')).toBe(2)
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk and bread' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Move to trash' }))
+    await trashOpenNote()
     await screen.findByRole('button', { name: 'Undo' })
     fireEvent.click(screen.getByRole('button', { name: 'Trash' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Delete Shopping, Milk and bread forever' }))

@@ -54,7 +54,9 @@ test('opens an old version and a trashed note in the modal', async ({ page }) =>
   await page.goto('/')
   await createNote(page, 'Alpha', 'Apples')
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'History', exact: true }).click()
+  const open = page.getByRole('dialog', { name: 'Note' })
+  await open.getByRole('button', { name: 'More', exact: true }).click()
+  await open.getByRole('menuitem', { name: 'Version history', exact: true }).click()
 
   await page.getByRole('list', { name: 'History' }).getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
   const version = page.getByRole('dialog', { name: 'Version' })
@@ -66,7 +68,8 @@ test('opens an old version and a trashed note in the modal', async ({ page }) =>
 
   await page.getByRole('button', { name: 'Back to note', exact: true }).click()
   const note = page.getByRole('dialog', { name: 'Note' })
-  await note.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await note.getByRole('button', { name: 'More', exact: true }).click()
+  await note.getByRole('menuitem', { name: 'Delete note', exact: true }).click()
   await expect(note).toHaveCount(0)
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Trash', exact: true }).click()
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
@@ -75,6 +78,72 @@ test('opens an old version and a trashed note in the modal', async ({ page }) =>
   await page.keyboard.press('Escape')
   await expect(note).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Alpha, Apples', exact: true })).toBeVisible()
+})
+
+test('a long note scrolls under a fixed toolbar, and More changes labels, color, history, and trash', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const body = Array.from({ length: 80 }, (_, index) => `Line ${index + 1} of the long practise note`).join('\n')
+  await createNote(page, 'Practise', body)
+
+  await page.getByRole('button', { name: /^Practise, Line 1/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  await expect(dialog).toBeVisible()
+
+  const box = await dialog.boundingBox()
+  expect(box).not.toBeNull()
+  expect(Math.abs((box?.width ?? 0) - 600)).toBeLessThanOrEqual(1)
+  expect(Math.abs((box?.x ?? 0) - 340)).toBeLessThanOrEqual(2)
+  expect(Math.abs((box?.y ?? 0) - 48)).toBeLessThanOrEqual(2)
+  expect(Math.abs((box?.height ?? 0) - (800 - 96))).toBeLessThanOrEqual(4)
+
+  const scroller = dialog.locator('.note-modal-body')
+  const toolbar = dialog.locator('.note-modal-actions')
+  const before = await toolbar.boundingBox()
+  const scrolled = await scroller.evaluate((node) => {
+    node.scrollTop = node.scrollHeight
+    return { top: node.scrollTop, overflow: node.scrollHeight > node.clientHeight + 20 }
+  })
+  expect(scrolled.overflow).toBe(true)
+  expect(scrolled.top).toBeGreaterThan(20)
+  const after = await toolbar.boundingBox()
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(1)
+  await expect(toolbar.getByRole('button', { name: 'Close', exact: true })).toBeVisible()
+
+  await toolbar.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Change labels', exact: true }).click()
+  await dialog.getByLabel('Enter label name').fill('Practice')
+  await dialog.getByRole('button', { name: 'Create "Practice"', exact: true }).click()
+  await expect(dialog.getByRole('checkbox', { name: 'Practice', exact: true })).toBeChecked()
+  await expect(dialog.locator('.note-open-chip', { hasText: 'Practice' })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog.getByRole('group', { name: 'Label note' })).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+
+  await toolbar.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Colors', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Yellow color', exact: true }).click()
+  await expect(dialog).toHaveCSS('background-color', 'rgb(255, 244, 117)')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await toolbar.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Version history', exact: true }).click()
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('list', { name: 'History' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Back to note', exact: true }).click()
+  await expect(dialog).toBeVisible()
+  await toolbar.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Delete note', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('status')).toContainText('Note moved to trash')
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.getByRole('button', { name: /^Practise,/ })).toBeVisible()
 })
 
 async function createNote(page: Page, title: string, body: string) {

@@ -43,10 +43,11 @@ export function ConfirmDialog({
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Escape') return
       event.preventDefault()
+      event.stopPropagation()
       onCancel()
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
   }, [onCancel])
 
   return (

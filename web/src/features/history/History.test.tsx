@@ -125,6 +125,11 @@ function HistoryHarness({ history, children }: { history: MemoryHistory; childre
   )
 }
 
+async function openVersionHistory() {
+  fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Version history' }))
+}
+
 async function historyList() {
   return screen.findByRole('list', { name: 'History' })
 }
@@ -141,7 +146,7 @@ describe('history page', () => {
     renderAt(db, '/')
     fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
     fireEvent.change(await screen.findByLabelText('Body'), { target: { value: 'gamma' } })
-    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await openVersionHistory()
 
     const list = await historyList()
     // Leaving the editor for history cuts the typed text as a version first.
@@ -214,7 +219,7 @@ describe('history page', () => {
     renderAt(db, '/')
     fireEvent.click(await screen.findByRole('button', { name: 'List' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+    await openVersionHistory()
 
     const list = await historyList()
     expect(list).toHaveAttribute('data-layout', 'list')
@@ -348,7 +353,7 @@ describe('history page', () => {
     expect(await screen.findByRole('button', { name: 'Groceries, beta' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: 'Groceries, beta' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+    await openVersionHistory()
     await historyList()
     fireEvent.click(screen.getByRole('button', { name: 'Back to note' }))
     expect(await screen.findByRole('dialog', { name: 'Note' })).toBeInTheDocument()

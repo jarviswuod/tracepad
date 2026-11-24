@@ -36,7 +36,9 @@ test('creates, orders, renames and deletes labels from the Edit labels dialog', 
 
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
   const note = page.getByRole('dialog', { name: 'Note' })
-  await expect(note.locator('.note-label-picks label')).toHaveText(['1. 9', '1. 10', 'Apple'])
+  await note.getByRole('button', { name: 'More', exact: true }).click()
+  await note.getByRole('menuitem', { name: 'Change labels', exact: true }).click()
+  await expect(note.locator('.note-label-scroll label')).toHaveText(['1. 9', '1. 10', 'Apple'])
   await note.getByRole('checkbox', { name: '1. 9', exact: true }).click()
   await expect(note.getByRole('checkbox', { name: '1. 9', exact: true })).toBeChecked()
   await note.getByRole('button', { name: 'Close', exact: true }).click()

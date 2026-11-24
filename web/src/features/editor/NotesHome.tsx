@@ -25,7 +25,7 @@ import type { Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
-import { NoteMeta } from '../labels/NoteMeta'
+import { NoteContentEnd, NotePinButton, NoteToolbar } from '../labels/NoteMeta'
 import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
@@ -39,6 +39,7 @@ type Session = {
   isPinned: boolean
   isArchived: boolean
   isTrashed: boolean
+  updatedAt: string
 }
 
 type NotesHomeProps = {
@@ -89,15 +90,23 @@ export function NotesHome({
     const ticket = ++request.current
     const openId = openIdRef.current
     try {
-      const [nextCards, nextLabels, nextActive] = await Promise.all([
+      const [nextCards, nextLabels, nextActive, listedOpen] = await Promise.all([
         listBoard(db, { view: viewRef.current, sort: sortRef.current }),
         listLabels(db),
-        openId ? listActiveLabelIds(db, openId) : Promise.resolve([]),
+        openId ? listActiveLabelIds(db, openId) : Promise.resolve([] as Uuid[]),
+        openId ? getListedNote(db, openId) : Promise.resolve(null),
       ])
       if (ticket !== request.current) return
       setCards(nextCards)
       setLabels(nextLabels)
       setActiveLabelIds(nextActive)
+      if (listedOpen) {
+        setSession((current) => {
+          if (!current || current.noteId !== listedOpen.note.id) return current
+          if (current.updatedAt === listedOpen.note.updatedAt) return current
+          return { ...current, updatedAt: listedOpen.note.updatedAt }
+        })
+      }
       setReady(true)
     } catch {
       // A view change can still be reading when the screen unmounts and the database closes.
@@ -134,6 +143,7 @@ export function NotesHome({
             isPinned: listed.note.isPinned,
             isArchived: listed.note.isArchived,
             isTrashed: listed.note.trashedAt != null,
+            updatedAt: listed.note.updatedAt,
           }
         : null,
     )
@@ -155,6 +165,7 @@ export function NotesHome({
       isPinned: false,
       isArchived: false,
       isTrashed: false,
+      updatedAt: new Date().toISOString(),
     })
   }
 
@@ -279,6 +290,14 @@ export function NotesHome({
     if (!action) return
     setPendingDelete(null)
     if (action.kind === 'note') {
+      if (openIdRef.current === action.noteId) {
+        try {
+          await editorRef.current?.leave()
+        } finally {
+          openIdRef.current = null
+          setSession(null)
+        }
+      }
       setUndoId((current) => (current === action.noteId ? null : current))
       await deleteNoteForever(db, { noteId: action.noteId })
     } else {
@@ -301,20 +320,16 @@ export function NotesHome({
         onTrash={() => void trashSession()}
         trashed={session.isTrashed}
         onRestore={() => void restoreOpenNote()}
+        showFooter={session.version == null}
+        expandBody={session.version != null}
+        titleAside={
+          session.version ? (
+            <NotePinButton isPinned={session.isPinned} onPin={(pinned) => void changePin(pinned)} />
+          ) : null
+        }
         actions={
           session.version ? (
-            <NoteMeta
-              isPinned={session.isPinned}
-              isArchived={session.isArchived}
-              color={session.color}
-              labels={labels}
-              activeLabelIds={activeLabelIds}
-              onPin={(pinned) => void changePin(pinned)}
-              onArchive={(archived) => void changeArchive(archived)}
-              onColor={(color) => void changeColor(color)}
-              onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
-              onAddLabel={(name) => void addLabelByName(name)}
-            />
+            <NoteContentEnd labels={labels} activeLabelIds={activeLabelIds} updatedAt={session.updatedAt} />
           ) : null
         }
         onLeft={() => {
@@ -356,6 +371,29 @@ export function NotesHome({
           color={opened.color}
           onClose={() => void editorRef.current?.close()}
           returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
+          toolbar={
+            <NoteToolbar
+              trashed={opened.isTrashed}
+              isArchived={opened.isArchived}
+              color={opened.color}
+              labels={labels}
+              activeLabelIds={activeLabelIds}
+              onArchive={(archived) => void changeArchive(archived)}
+              onColor={(color) => void changeColor(color)}
+              onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
+              onAddLabel={(name) => void addLabelByName(name)}
+              onHistory={() => {
+                const noteId = opened.noteId
+                void editorRef.current?.leave().then(
+                  () => onHistory(noteId),
+                  () => undefined,
+                )
+              }}
+              onDelete={() => void trashSession()}
+              onRestore={() => void restoreOpenNote()}
+              onDeleteForever={() => setPendingDelete({ kind: 'note', noteId: opened.noteId })}
+            />
+          }
         >
           {editor}
         </NoteModal>

@@ -9,7 +9,7 @@ test('trashes a note, undoes it, restores pin and color, and asks before deletin
 
   await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible()
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
-  await page.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await deleteOpenNote(page)
   await expect(page.getByRole('button', { name: 'Alpha, Apples', exact: true })).toHaveCount(0)
   await expect(page.getByRole('status')).toContainText('Note moved to trash')
 
@@ -20,7 +20,7 @@ test('trashes a note, undoes it, restores pin and color, and asks before deletin
   await expect(restored).toHaveCSS('background-color', 'rgb(255, 255, 0)')
 
   await restored.click()
-  await page.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await deleteOpenNote(page)
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Trash', exact: true }).click()
   await expect(page.getByText('30 days left')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Pinned' })).toHaveCount(0)
@@ -36,7 +36,7 @@ test('trashes a note, undoes it, restores pin and color, and asks before deletin
   )
 
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
-  await page.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await deleteOpenNote(page)
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Trash', exact: true }).click()
   await page.getByRole('button', { name: 'Delete Alpha, Apples forever', exact: true }).click()
   const dialog = page.getByRole('dialog')
@@ -59,8 +59,10 @@ test('restores a trashed note from its modal with pin and color kept', async ({ 
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Note' })
   await dialog.getByRole('button', { name: 'Pin', exact: true }).click()
+  await dialog.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Colors', exact: true }).click()
   await dialog.getByRole('button', { name: 'Yellow color', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await deleteOpenNote(page)
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible()
 
@@ -82,7 +84,9 @@ test('restores a trashed note from its modal with pin and color kept', async ({ 
   await expect(card).toHaveCSS('background-color', 'rgb(255, 244, 117)')
 
   await card.click()
-  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'History', exact: true }).click()
+  const again = page.getByRole('dialog', { name: 'Note' })
+  await again.getByRole('button', { name: 'More', exact: true }).click()
+  await again.getByRole('menuitem', { name: 'Version history', exact: true }).click()
   await expect(page.getByRole('list', { name: 'History' }).getByText('Restored', { exact: true })).toBeVisible()
 })
 
@@ -121,9 +125,17 @@ async function createNote(page: Page, title: string, body: string) {
   await expect(page.getByRole('button', { name: `${title}, ${body}`, exact: true })).toBeVisible()
 }
 
+async function deleteOpenNote(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  const more = dialog.getByRole('button', { name: 'More', exact: true })
+  if ((await more.getAttribute('aria-expanded')) === 'true') await more.click()
+  await more.click()
+  await dialog.getByRole('menuitem', { name: 'Delete note', exact: true }).click()
+}
+
 async function trashOpenNote(page: Page, cardName: string) {
   await page.getByRole('button', { name: cardName, exact: true }).click()
-  await page.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await deleteOpenNote(page)
   await expect(page.getByRole('button', { name: cardName, exact: true })).toHaveCount(0)
 }
 
