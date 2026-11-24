@@ -89,6 +89,126 @@ export async function listNotes(db: TracepadDatabase): Promise<ListedNote[]> {
   return listed
 }
 
+/** The note and its current text, or null when either row is missing. */
+export async function getListedNote(db: TracepadDatabase, noteId: Uuid): Promise<ListedNote | null> {
+  const note = await db.get('notes', noteId)
+  if (!note?.currentVersionId) return null
+  const version = await db.get('noteVersions', note.currentVersionId)
+  if (!version) return null
+  return { note, version }
+}
+
+export type BoardSort = 'edited' | 'created'
+
+export type BoardView =
+  | { kind: 'notes' }
+  | { kind: 'reminders' }
+  | { kind: 'archive' }
+  | { kind: 'trash' }
+  | { kind: 'label'; labelId: Uuid }
+
+export type BoardCard = ListedNote & {
+  /** Days left out of 30. Set only on the trash view. */
+  daysLeft: number | null
+}
+
+export type BoardQuery = {
+  view: BoardView
+  sort: BoardSort
+  /** Used for trash days left. Defaults to the current time. */
+  now?: IsoTimestamp
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const TRASH_WINDOW_DAYS = 30
+
+/** A note trashed at this moment has 30 days left. The count drops after each full day. */
+function daysLeftInTrash(trashedAt: IsoTimestamp, now: IsoTimestamp): number {
+  const elapsed = Date.parse(now) - Date.parse(trashedAt)
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return TRASH_WINDOW_DAYS
+  return Math.max(0, TRASH_WINDOW_DAYS - Math.floor(elapsed / DAY_MS))
+}
+
+function compareBoard(a: Note, b: Note, sort: BoardSort): number {
+  if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+  const aKey = sort === 'created' ? a.createdAt : a.updatedAt
+  const bKey = sort === 'created' ? b.createdAt : b.updatedAt
+  if (aKey !== bKey) return aKey < bKey ? 1 : -1
+  if (a.id === b.id) return 0
+  return a.id < b.id ? -1 : 1
+}
+
+function inView(
+  note: Note,
+  view: BoardView,
+  labelNoteIds: Set<Uuid> | null,
+  reminderNoteIds: Set<Uuid> | null,
+): boolean {
+  const trashed = note.trashedAt != null
+  switch (view.kind) {
+    case 'notes':
+      return !trashed && !note.isArchived
+    case 'archive':
+      return !trashed && note.isArchived
+    case 'trash':
+      return trashed
+    case 'label':
+      // Archived notes stay on their label. Trashed notes stay in Trash.
+      return !trashed && (labelNoteIds?.has(note.id) ?? false)
+    case 'reminders':
+      // An archived reminder still fires. A trashed one is paused.
+      return !trashed && (reminderNoteIds?.has(note.id) ?? false)
+    default: {
+      const unreachable: never = view
+      return unreachable
+    }
+  }
+}
+
+function notesForView(db: TracepadDatabase, view: BoardView, sort: BoardSort): Promise<Note[]> {
+  if (view.kind === 'trash') return db.getAllFromIndex('notes', 'byTrashedAt')
+  if (sort === 'created') return db.getAllFromIndex('notes', 'byCreatedAt')
+  return db.getAllFromIndex('notes', 'byUpdatedAt')
+}
+
+/**
+ * Pinned notes first, then recently edited or newest created.
+ * Notes and Archive hide trash. Archive is archived only.
+ * A label includes archived notes. Trash is trashed notes, with days left out of 30.
+ */
+export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promise<BoardCard[]> {
+  const now = query.now ?? new Date().toISOString()
+  const notes = await notesForView(db, query.view, query.sort)
+
+  let labelNoteIds: Set<Uuid> | null = null
+  if (query.view.kind === 'label') {
+    const links = await db.getAllFromIndex('noteLabels', 'byLabelId', query.view.labelId)
+    labelNoteIds = new Set(links.filter((link) => !link.isRemoved).map((link) => link.noteId))
+  }
+
+  let reminderNoteIds: Set<Uuid> | null = null
+  if (query.view.kind === 'reminders') {
+    const reminders = await db.getAll('reminders')
+    reminderNoteIds = new Set(reminders.map((reminder) => reminder.noteId))
+  }
+
+  const matching = notes.filter((note) => inView(note, query.view, labelNoteIds, reminderNoteIds))
+  matching.sort((a, b) => compareBoard(a, b, query.sort))
+
+  const cards: BoardCard[] = []
+  for (const note of matching) {
+    if (!note.currentVersionId) continue
+    const version = await db.get('noteVersions', note.currentVersionId)
+    if (!version) continue
+    cards.push({
+      note,
+      version,
+      daysLeft: query.view.kind === 'trash' && note.trashedAt ? daysLeftInTrash(note.trashedAt, now) : null,
+    })
+  }
+  return cards
+}
+
 /**
  * Upsert this device's draft and queue one outbox row.
  * A draft may exist before the note row: the note is created only when a version is cut.

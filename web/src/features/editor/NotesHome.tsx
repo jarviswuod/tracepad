@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TracepadDatabase } from '../../data/db'
-import { ensureDeviceId, listNotes, type ListedNote } from '../../data/notes'
-import type { NoteVersion, Uuid } from '../../domain/types'
+import { listLabels } from '../../data/labels'
+import {
+  ensureDeviceId,
+  getListedNote,
+  listBoard,
+  type BoardCard,
+  type BoardSort,
+  type BoardView,
+} from '../../data/notes'
+import type { Label, NoteVersion, Uuid } from '../../domain/types'
+import { Board } from '../board/Board'
 import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
@@ -12,13 +21,27 @@ type Session = {
 
 export function NotesHome({ db }: { db: TracepadDatabase }) {
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
-  const [notes, setNotes] = useState<ListedNote[]>([])
+  const [cards, setCards] = useState<BoardCard[]>([])
+  const [labels, setLabels] = useState<Label[]>([])
+  const [view, setView] = useState<BoardView>({ kind: 'notes' })
+  const [sort, setSort] = useState<BoardSort>('edited')
+  const [layout, setLayout] = useState<'grid' | 'list'>('grid')
+  const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const editorRef = useRef<EditorHandle>(null)
+  const request = useRef(0)
 
   const refresh = useCallback(async () => {
-    setNotes(await listNotes(db))
-  }, [db])
+    const ticket = ++request.current
+    const [nextCards, nextLabels] = await Promise.all([
+      listBoard(db, { view, sort }),
+      listLabels(db),
+    ])
+    if (ticket !== request.current) return
+    setCards(nextCards)
+    setLabels(nextLabels)
+    setReady(true)
+  }, [db, view, sort])
 
   useEffect(() => {
     let active = true
@@ -36,10 +59,9 @@ export function NotesHome({ db }: { db: TracepadDatabase }) {
 
   async function openNote(noteId: Uuid) {
     await editorRef.current?.leave()
-    const listed = await listNotes(db)
-    setNotes(listed)
-    const found = listed.find((item) => item.note.id === noteId)
-    setSession(found ? { noteId, version: found.version } : null)
+    const listed = await getListedNote(db, noteId)
+    setSession(listed ? { noteId, version: listed.version } : null)
+    await refresh()
   }
 
   function startNote() {
@@ -47,43 +69,35 @@ export function NotesHome({ db }: { db: TracepadDatabase }) {
   }
 
   return (
-    <div className="notes-home">
-      {session && deviceId ? (
-        <Editor
-          key={session.noteId}
-          ref={editorRef}
-          db={db}
-          deviceId={deviceId}
-          noteId={session.noteId}
-          openedVersion={session.version}
-          onLeft={() => {
-            setSession(null)
-            void refresh()
-          }}
-        />
-      ) : (
-        <button type="button" onClick={startNote} disabled={deviceId == null}>
-          Take a note
-        </button>
-      )}
-      <ul className="note-list" aria-label="Notes">
-        {notes.map(({ note, version }) => {
-          const name = [version.title, version.body].filter((part) => part != null && part !== '').join(', ')
-          return (
-            <li key={note.id}>
-              <button
-                type="button"
-                data-note-id={note.id}
-                aria-label={name || 'Untitled'}
-                onClick={() => void openNote(note.id)}
-              >
-                <span className="note-title">{version.title ?? 'Untitled'}</span>
-                {version.body ? <span className="note-body">{version.body}</span> : null}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+    <Board
+      cards={cards}
+      labels={labels}
+      view={view}
+      sort={sort}
+      layout={layout}
+      createDisabled={deviceId == null}
+      ready={ready}
+      onView={setView}
+      onSort={setSort}
+      onLayout={setLayout}
+      onOpen={(noteId) => void openNote(noteId)}
+      onCreate={startNote}
+      editor={
+        session && deviceId ? (
+          <Editor
+            key={session.noteId}
+            ref={editorRef}
+            db={db}
+            deviceId={deviceId}
+            noteId={session.noteId}
+            openedVersion={session.version}
+            onLeft={() => {
+              setSession(null)
+              void refresh()
+            }}
+          />
+        ) : null
+      }
+    />
   )
 }

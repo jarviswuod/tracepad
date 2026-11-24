@@ -6,6 +6,7 @@ import {
   clearDraft,
   commitNoteText,
   ensureDeviceId,
+  getListedNote,
   listNotes,
   recoverLeftoverDrafts,
   saveDraft,
@@ -546,5 +547,23 @@ describe('listNotes', () => {
     expect(listed.map((item) => item.note.id)).toEqual(['note-new', 'note-old'])
     expect(listed[0].version.title).toBe('Newer')
     expect(listed[1].version.body).toBe('Milk')
+  })
+})
+
+describe('getListedNote', () => {
+  it('returns the current text and nothing when the version is missing', async () => {
+    const db = await open()
+    await commitNoteText(db, commitBase())
+
+    const listed = await getListedNote(db, noteId)
+    expect(listed?.note.id).toBe(noteId)
+    expect(listed?.version.title).toBe('Shopping')
+    expect(listed?.version.body).toBe('Milk')
+
+    const note = await db.get('notes', noteId)
+    if (!note) throw new Error('expected a note')
+    await db.put('notes', { ...note, currentVersionId: 'missing' })
+    expect(await getListedNote(db, noteId)).toBeNull()
+    expect(await getListedNote(db, 'absent')).toBeNull()
   })
 })
