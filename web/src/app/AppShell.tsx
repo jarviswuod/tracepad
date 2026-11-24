@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
+import { recoverLeftoverDrafts } from '../data/notes'
 import { NotesHome } from '../features/editor/NotesHome'
 
 export function AppShell() {
@@ -8,7 +9,8 @@ export function AppShell() {
   useEffect(() => {
     let active = true
     void openTracepadDb()
-      .then((opened) => {
+      .then(async (opened) => {
+        await recoverLeftoverDrafts(opened)
         if (active) setDb(opened)
       })
       .catch(() => {

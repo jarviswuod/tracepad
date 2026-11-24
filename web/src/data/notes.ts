@@ -13,6 +13,7 @@ export type CommitResult =
   | { kind: 'cut'; versionId: Uuid }
 
 const deviceIdLocks = new Map<string, Promise<Uuid>>()
+const recoveryLocks = new Map<string, Promise<void>>()
 
 function nowStamp(now?: IsoTimestamp): IsoTimestamp {
   return now ?? new Date().toISOString()
@@ -205,6 +206,46 @@ export async function commitNoteText(
     versionId: crypto.randomUUID(),
   })
   return { kind: 'cut', versionId }
+}
+
+/**
+ * Startup recovery, before the board shows. Each of this device's leftover drafts
+ * is committed the same way as leaving the note (empty, unchanged, parent, outbox),
+ * which removes the draft. Drafts from other devices stay.
+ * Overlapping calls share one run so a second startup cannot cut the draft twice.
+ */
+export function recoverLeftoverDrafts(db: TracepadDatabase): Promise<void> {
+  const inFlight = recoveryLocks.get(db.name)
+  if (inFlight) return inFlight
+
+  const run = commitLeftoverDrafts(db).finally(() => {
+    recoveryLocks.delete(db.name)
+  })
+  recoveryLocks.set(db.name, run)
+  return run
+}
+
+async function commitLeftoverDrafts(db: TracepadDatabase): Promise<void> {
+  const deviceId = await ensureDeviceId(db)
+  const drafts = await db.getAllFromIndex('drafts', 'byDeviceId', deviceId)
+  for (const draft of drafts) {
+    const opened = await openedText(db, draft.baseVersionId)
+    await commitNoteText(db, {
+      noteId: draft.noteId,
+      deviceId,
+      openedVersionId: draft.baseVersionId,
+      opened,
+      next: { title: draft.title, body: draft.body },
+    })
+  }
+}
+
+/** The version the draft started from. A new note has none, so the opened text is empty. */
+async function openedText(db: TracepadDatabase, versionId: Uuid | null): Promise<NoteText> {
+  if (versionId == null) return { title: null, body: null }
+  const version = await db.get('noteVersions', versionId)
+  if (!version) return { title: null, body: null }
+  return { title: version.title, body: version.body }
 }
 
 async function discardUnsaved(db: TracepadDatabase, noteId: Uuid, deviceId: Uuid): Promise<void> {

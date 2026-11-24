@@ -2,7 +2,14 @@ import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Note, OutboxRow } from '../domain/types'
 import { openTracepadDb, type TracepadDatabase } from './db'
-import { clearDraft, commitNoteText, ensureDeviceId, listNotes, saveDraft } from './notes'
+import {
+  clearDraft,
+  commitNoteText,
+  ensureDeviceId,
+  listNotes,
+  recoverLeftoverDrafts,
+  saveDraft,
+} from './notes'
 
 let counter = 0
 const opened: TracepadDatabase[] = []
@@ -350,6 +357,179 @@ describe('saveDraft', () => {
       'draft:delete',
     ])
     expect(await db.count('noteVersions')).toBe(1)
+  })
+})
+
+describe('recoverLeftoverDrafts', () => {
+  it('turns a leftover draft into one version parented on the opened version and removes the draft', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    const first = await commitNoteText(db, commitBase({ deviceId }))
+    if (first.kind !== 'cut') throw new Error('expected a version')
+
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: first.versionId,
+      title: 'Shopping',
+      body: 'Milk and bread',
+      now: later,
+    })
+
+    await recoverLeftoverDrafts(db)
+
+    expect(await db.count('drafts')).toBe(0)
+    const versions = await db.getAll('noteVersions')
+    expect(versions).toHaveLength(2)
+    const cut = versions.find((version) => version.id !== first.versionId)
+    expect(cut).toMatchObject({
+      noteId,
+      parentVersionId: first.versionId,
+      deviceId,
+      kind: 'text',
+      title: 'Shopping',
+      body: 'Milk and bread',
+      checklistItems: null,
+      receivedAt: null,
+    })
+    expect((await db.get('notes', noteId))?.currentVersionId).toBe(cut?.id)
+    const rows = await outbox(db)
+    expect(rows.filter((row) => row.entityType === 'version' && row.op === 'create')).toHaveLength(2)
+    expect(rows.some((row) => row.entityType === 'version' && row.entityId === cut?.id)).toBe(true)
+  })
+
+  it('removes an unchanged leftover draft and does not cut a version', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    const first = await commitNoteText(db, commitBase({ deviceId }))
+    if (first.kind !== 'cut') throw new Error('expected a version')
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: first.versionId,
+      title: 'Shopping',
+      body: 'Milk',
+      now: later,
+    })
+
+    await recoverLeftoverDrafts(db)
+
+    expect(await db.count('drafts')).toBe(0)
+    expect(await db.count('noteVersions')).toBe(1)
+    const note = await db.get('notes', noteId)
+    expect(note?.currentVersionId).toBe(first.versionId)
+    expect(note?.updatedAt).toBe(at)
+    const rows = await outbox(db)
+    expect(rows.filter((row) => row.entityType === 'version')).toHaveLength(1)
+    expect(rows.map((row) => `${row.entityType}:${row.op}`)).toContain('draft:delete')
+  })
+
+  it('discards an empty leftover draft and leaves no note', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: null,
+      title: '',
+      body: null,
+      now: at,
+    })
+
+    await recoverLeftoverDrafts(db)
+
+    expect(await db.count('drafts')).toBe(0)
+    expect(await db.count('notes')).toBe(0)
+    expect(await db.count('noteVersions')).toBe(0)
+    expect(await db.count('outbox')).toBe(0)
+  })
+
+  it('cuts a version when a leftover draft empties an existing note', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    const first = await commitNoteText(db, commitBase({ deviceId }))
+    if (first.kind !== 'cut') throw new Error('expected a version')
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: first.versionId,
+      title: '',
+      body: '',
+      now: later,
+    })
+
+    await recoverLeftoverDrafts(db)
+
+    expect(await db.count('drafts')).toBe(0)
+    const versions = await db.getAll('noteVersions')
+    expect(versions).toHaveLength(2)
+    const cut = versions.find((version) => version.id !== first.versionId)
+    expect(cut).toMatchObject({
+      parentVersionId: first.versionId,
+      title: null,
+      body: null,
+    })
+    expect((await db.get('notes', noteId))?.currentVersionId).toBe(cut?.id)
+  })
+
+  it('leaves drafts that belong to other devices', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    const otherDeviceId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: null,
+      title: 'Ours',
+      body: 'Keep',
+      now: at,
+    })
+    await saveDraft(db, {
+      noteId,
+      deviceId: otherDeviceId,
+      baseVersionId: null,
+      title: 'Theirs',
+      body: 'Stay',
+      now: at,
+    })
+
+    await recoverLeftoverDrafts(db)
+
+    expect(await db.get('drafts', [noteId, otherDeviceId])).toMatchObject({
+      noteId,
+      deviceId: otherDeviceId,
+      baseVersionId: null,
+      title: 'Theirs',
+      body: 'Stay',
+    })
+    expect(await db.count('drafts')).toBe(1)
+    const versions = await db.getAll('noteVersions')
+    expect(versions).toHaveLength(1)
+    expect(versions[0]).toMatchObject({
+      title: 'Ours',
+      body: 'Keep',
+      parentVersionId: null,
+      deviceId,
+    })
+  })
+
+  it('cuts one version when recovery is started twice at once', async () => {
+    const db = await open()
+    const deviceId = await ensureDeviceId(db)
+    await saveDraft(db, {
+      noteId,
+      deviceId,
+      baseVersionId: null,
+      title: 'Shopping',
+      body: 'Milk',
+      now: at,
+    })
+
+    await Promise.all([recoverLeftoverDrafts(db), recoverLeftoverDrafts(db)])
+
+    expect(await db.count('drafts')).toBe(0)
+    expect(await db.count('noteVersions')).toBe(1)
+    expect(await db.count('notes')).toBe(1)
   })
 })
 
