@@ -36,3 +36,17 @@
   min-height: 5rem;
   resize: vertical;
 }
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.editor-actions button {
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}

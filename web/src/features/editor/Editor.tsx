@@ -4,6 +4,7 @@ import { clearDraft, commitNoteText, saveDraft } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
 import type { NoteVersion, Uuid } from '../../domain/types'
 import { isUnchangedText } from '../../domain/versioning'
+import { HistoryPanel } from '../history/History'
 import { SavingDot, savingDotState } from './SavingDot'
 
 /** Wait this long after the last keystroke, then save a draft. */
@@ -43,6 +44,7 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: Edi
   const [body, setBody] = useState(openedVersion?.body ?? '')
   const [unsaved, setUnsaved] = useState(false)
   const [pendingSync, setPendingSync] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const textRef = useRef<EditorText>({ title, body })
   textRef.current = { title, body }
@@ -230,20 +232,36 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: Edi
 
   return (
     <div className="editor" ref={cardRef} role="group" aria-label="Note">
-      <SavingDot state={savingDotState(unsaved, pendingSync)} />
-      <input
-        aria-label="Title"
-        placeholder="Title"
-        value={title}
-        autoFocus
-        onChange={(event) => changeTitle(event.target.value)}
-      />
-      <textarea
-        aria-label="Body"
-        placeholder="Take a note"
-        value={body}
-        onChange={(event) => changeBody(event.target.value)}
-      />
+      {historyOpen ? (
+        <HistoryPanel
+          db={db}
+          noteId={noteId}
+          localDeviceId={deviceId}
+          onBack={() => setHistoryOpen(false)}
+        />
+      ) : (
+        <>
+          <SavingDot state={savingDotState(unsaved, pendingSync)} />
+          <input
+            aria-label="Title"
+            placeholder="Title"
+            value={title}
+            autoFocus
+            onChange={(event) => changeTitle(event.target.value)}
+          />
+          <textarea
+            aria-label="Body"
+            placeholder="Take a note"
+            value={body}
+            onChange={(event) => changeBody(event.target.value)}
+          />
+          <div className="editor-actions">
+            <button type="button" onClick={() => setHistoryOpen(true)}>
+              History
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
