@@ -1,6 +1,6 @@
 # Tracepad: the full flow
 
-Everything a person can do in Tracepad, from opening the app for the first time to deleting a note forever, and what happens underneath each step. Each part names the technology that does the work. Sections 3 to 16 are version 1. Section 18 adds the version 2 flows from `learnings/notes.md`. Section 17 is the project's file structure, and sections 19 and 20 are the plans for both versions.
+Everything a person can do in Tracepad, from opening the app for the first time to deleting a note forever, and what happens underneath each step.
 
 Nothing here is built yet. This is the plan to review before the build starts. Anything marked **Proposed** is a default that has not been agreed yet. The list at the end collects them in one place.
 
@@ -8,23 +8,23 @@ Nothing here is built yet. This is the plan to review before the build starts. A
 
 ## 1. Tech stack
 
-| Layer                  | Web (first)                                                                         | Server (second)                                                              | Android (third)                               |
-| ---------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------- |
-| Language               | TypeScript                                                                          | Java 21                                                                      | Kotlin                                        |
-| Framework              | React, built with Vite                                                              | Spring Boot                                                                  | Jetpack Compose                               |
-| Screens and routing    | React Router                                                                        | —                                                                            | Compose Navigation                            |
-| Local database         | IndexedDB through `idb` (v1), Dexie (v2)                                            | —                                                                            | Room (SQLite)                                 |
-| Offline app shell      | Service worker via `vite-plugin-pwa` (Workbox)                                      | —                                                                            | Built in: the app is installed                |
-| Server database        | —                                                                                   | PostgreSQL                                                                   | —                                             |
-| Database migrations    | Upgrade step built into `idb`                                                       | Flyway                                                                       | Room migrations                               |
-| Talking to the server  | `fetch`                                                                             | Spring Web (REST, JSON)                                                      | Retrofit + OkHttp, kotlinx.serialization      |
-| Accounts               | Login screens                                                                       | Spring Security, BCrypt password hashing, JWT access tokens + refresh tokens | Login screens                                 |
-| Storing the login      | Refresh token in an httpOnly cookie, access token in memory                         | —                                                                            | DataStore, encrypted with Android Keystore    |
-| Background sync        | While open; Background Sync on Chromium                                             | —                                                                            | WorkManager                                   |
-| Reminders              | Local alarm primary (tab timer), Web Push backup via service worker (after server)  | Web Push sender (`web-push` Java library, VAPID keys), scheduled job         | AlarmManager (exact alarms), boot receiver    |
-| Email (password reset) | —                                                                                   | Spring Mail; Mailpit in Docker while local                                   | —                                             |
-| Tests                  | Vitest, `fake-indexeddb`, React Testing Library, Playwright                         | JUnit 5, Spring Boot Test, Testcontainers (real Postgres)                    | JUnit, Room in-memory tests, Compose UI tests |
-| Running locally        | `npm run dev`                                                                       | Docker Compose (server + Postgres + Mailpit)                                 | Android Studio emulator                       |
+| Layer                  | Web (first)                                                                        | Server (second)                                                              | Android (third)                               |
+| ---------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------- |
+| Language               | TypeScript                                                                         | Java 21                                                                      | Kotlin                                        |
+| Framework              | React, built with Vite                                                             | Spring Boot                                                                  | Jetpack Compose                               |
+| Screens and routing    | React Router                                                                       | —                                                                            | Compose Navigation                            |
+| Local database         | IndexedDB through `idb` (v1), Dexie (v2)                                           | —                                                                            | Room (SQLite)                                 |
+| Offline app shell      | Service worker via `vite-plugin-pwa` (Workbox)                                     | —                                                                            | Built in: the app is installed                |
+| Server database        | —                                                                                  | PostgreSQL                                                                   | —                                             |
+| Database migrations    | Upgrade step built into `idb`                                                      | Flyway                                                                       | Room migrations                               |
+| Talking to the server  | `fetch`                                                                            | Spring Web (REST, JSON)                                                      | Retrofit + OkHttp, kotlinx.serialization      |
+| Accounts               | Login screens                                                                      | Spring Security, BCrypt password hashing, JWT access tokens + refresh tokens | Login screens                                 |
+| Storing the login      | Refresh token in an httpOnly cookie, access token in memory                        | —                                                                            | DataStore, encrypted with Android Keystore    |
+| Background sync        | While open; Background Sync on Chromium                                            | —                                                                            | WorkManager                                   |
+| Reminders              | Local alarm primary (tab timer), Web Push backup via service worker (after server) | Web Push sender (`web-push` Java library, VAPID keys), scheduled job         | AlarmManager (exact alarms), boot receiver    |
+| Email (password reset) | —                                                                                  | Spring Mail; Mailpit in Docker while local                                   | —                                             |
+| Tests                  | Vitest, `fake-indexeddb`, React Testing Library, Playwright                        | JUnit 5, Spring Boot Test, Testcontainers (real Postgres)                    | JUnit, Room in-memory tests, Compose UI tests |
+| Running locally        | `npm run dev`                                                                      | Docker Compose (server + Postgres + Mailpit)                                 | Android Studio emulator                       |
 
 ---
 
@@ -580,8 +580,7 @@ Each numbered item is one feature: it gets built, tested with automated tests an
 
 1. Repo skeleton: the folders from section 17, `README.md`, `.gitignore`, `.editorconfig`.
 2. `web/` with Vite, React, TypeScript, Vitest, `fake-indexeddb`, and Playwright, plus one passing test.
-3. Update `docs/Tracepad-v2.md` and `docs/Tracepad-flow.md` to the agreed rules: 30-day trash, save versus version, history entries, draft sync.
-4. `web/src/domain/types.ts`: every data shape, written once.
+3. `web/src/domain/types.ts`: every data shape, written once.
 
 ### Phase 1: web, fully offline
 
