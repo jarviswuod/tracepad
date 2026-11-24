@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import type { Label, Uuid } from '../../domain/types'
+import { EditLabelsDialog } from './EditLabelsDialog'
 
 type LabelSectionProps = {
   labels: Label[]
@@ -10,88 +11,41 @@ type LabelSectionProps = {
   onDelete?: (labelId: Uuid) => void
 }
 
-/** The Labels block in the side list: open a label, and create, rename or delete one. */
+/** Label names in the side list, then "Edit labels" when create, rename and delete are available. */
 export function LabelSection({ labels, currentLabelId, onOpen, onCreate, onRename, onDelete }: LabelSectionProps) {
+  const [editing, setEditing] = useState(false)
   const tools = onCreate && onRename && onDelete ? { onCreate, onRename, onDelete } : null
-  const [draft, setDraft] = useState('')
-  const [renaming, setRenaming] = useState<{ id: Uuid; name: string } | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-
-  useEffect(() => {
-    if (renaming && !labels.some((label) => label.id === renaming.id)) setRenaming(null)
-  }, [labels, renaming])
-
-  function startRename(label: Label) {
-    setRenaming({ id: label.id, name: label.name })
-    setRenameValue(label.name)
-  }
-
-  async function create(event: FormEvent) {
-    event.preventDefault()
-    if (!tools) return
-    const ok = await tools.onCreate(draft)
-    if (ok) setDraft('')
-  }
-
-  async function saveRename(event: FormEvent) {
-    event.preventDefault()
-    if (!tools || !renaming) return
-    const ok = await tools.onRename(renaming.id, renameValue)
-    if (ok) setRenaming(null)
-  }
 
   return (
     <>
-      <div className="side-heading">Labels</div>
-      <ul className="side-label-list">
+      <ul className="side-label-list" aria-label="Labels">
         {labels.map((label) => (
           <li key={label.id}>
-            {tools && renaming?.id === label.id ? (
-              <form className="side-label-rename" onSubmit={(event) => void saveRename(event)}>
-                <input
-                  aria-label={`Rename ${renaming.name}`}
-                  value={renameValue}
-                  onChange={(event) => setRenameValue(event.target.value)}
-                />
-                <button type="submit">Save</button>
-                <button type="button" onClick={() => setRenaming(null)}>
-                  Cancel
-                </button>
-              </form>
-            ) : (
-              <div className="side-label-row">
-                <button
-                  type="button"
-                  aria-current={currentLabelId === label.id ? 'page' : undefined}
-                  onClick={() => onOpen(label.id)}
-                >
-                  {label.name}
-                </button>
-                {tools ? (
-                  <div className="side-label-tools">
-                    <button type="button" aria-label={`Rename ${label.name}`} onClick={() => startRename(label)}>
-                      Rename
-                    </button>
-                    <button type="button" aria-label={`Delete ${label.name}`} onClick={() => tools.onDelete(label.id)}>
-                      Delete
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            )}
+            <button
+              type="button"
+              aria-current={currentLabelId === label.id ? 'page' : undefined}
+              onClick={() => onOpen(label.id)}
+            >
+              {label.name}
+            </button>
           </li>
         ))}
+        {tools ? (
+          <li>
+            <button type="button" onClick={() => setEditing(true)}>
+              Edit labels
+            </button>
+          </li>
+        ) : null}
       </ul>
-      {tools ? (
-        <form className="side-label-create" onSubmit={(event) => void create(event)}>
-          <input
-            aria-label="New label"
-            placeholder="New label"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button type="submit">Create label</button>
-        </form>
+      {tools && editing ? (
+        <EditLabelsDialog
+          labels={labels}
+          onCreate={tools.onCreate}
+          onRename={tools.onRename}
+          onDelete={tools.onDelete}
+          onClose={() => setEditing(false)}
+        />
       ) : null}
     </>
   )

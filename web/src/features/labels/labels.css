@@ -62,3 +62,101 @@
   background: transparent;
   color: inherit;
 }
+
+.edit-labels-create {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1rem 0.75rem 0.75rem 1rem;
+}
+
+.edit-labels-create input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid #dadce0;
+  padding: 0.4rem 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.edit-labels-create button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.25rem 0.35rem;
+}
+
+.edit-labels-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(70vh - 8rem);
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #bdc1c6 transparent;
+}
+
+.edit-labels-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.edit-labels-list::-webkit-scrollbar-thumb {
+  background: #bdc1c6;
+  border-radius: 6px;
+}
+
+.edit-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0 0.75rem 0 1rem;
+}
+
+.edit-label-name,
+.edit-label-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 0.45rem 0;
+}
+
+.edit-label-name {
+  cursor: pointer;
+}
+
+.edit-label-row input {
+  border-bottom: 1px solid #1a73e8;
+}
+
+.edit-label-delete {
+  flex: none;
+  visibility: hidden;
+  border: 0;
+  background: transparent;
+  color: #5f6368;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.35rem 0.15rem;
+}
+
+.edit-label-row:hover .edit-label-delete,
+.edit-label-row:focus-within .edit-label-delete {
+  visibility: visible;
+}

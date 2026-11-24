@@ -2,7 +2,7 @@ import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Label, Note, NoteVersion, Reminder } from '../domain/types'
 import { openTracepadDb, type TracepadDatabase } from './db'
-import { listLabels } from './labels'
+import { compareLabelNames, listLabels } from './labels'
 import { listBoard, type BoardCard, type BoardQuery } from './notes'
 
 let counter = 0
@@ -254,6 +254,15 @@ describe('listBoard', () => {
   })
 })
 
+describe('compareLabelNames', () => {
+  it('puts figures before letters, compares numbers naturally, and ignores case', () => {
+    const names = ['banana', '1. 10', 'Apple', '1. 9', '10', '2']
+    expect([...names].sort(compareLabelNames)).toEqual(['1. 9', '1. 10', '2', '10', 'Apple', 'banana'])
+    expect(compareLabelNames('Work', 'work')).toBe(0)
+    expect(compareLabelNames('9', 'Fig')).toBeLessThan(0)
+  })
+})
+
 describe('listLabels', () => {
   it('returns nothing, then labels by name', async () => {
     const db = await open()
@@ -267,5 +276,17 @@ describe('listLabels', () => {
     await db.put('labels', home)
 
     expect(await listLabels(db)).toEqual([home, workA, workB])
+  })
+
+  it('orders digits before letters and numbers naturally', async () => {
+    const db = await open()
+    const rows: Label[] = [
+      { id: 'ban', userId: null, name: 'banana', updatedAt: now },
+      { id: 'ten', userId: null, name: '1. 10', updatedAt: now },
+      { id: 'app', userId: null, name: 'Apple', updatedAt: now },
+      { id: 'nine', userId: null, name: '1. 9', updatedAt: now },
+    ]
+    for (const row of rows) await db.put('labels', row)
+    expect((await listLabels(db)).map((label) => label.name)).toEqual(['1. 9', '1. 10', 'Apple', 'banana'])
   })
 })

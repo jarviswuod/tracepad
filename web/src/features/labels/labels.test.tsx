@@ -116,12 +116,16 @@ describe('pin, archive, color and labels', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /^Close$/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /^Rename Work$/ }))
-    fireEvent.change(screen.getByLabelText('Rename Work'), { target: { value: 'Job' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Job$/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const labelsDialog = await screen.findByRole('dialog', { name: 'Edit labels' })
+    fireEvent.click(within(labelsDialog).getByRole('button', { name: 'Work' }))
+    fireEvent.change(within(labelsDialog).getByLabelText('Rename Work'), { target: { value: 'Job' } })
+    fireEvent.keyDown(within(labelsDialog).getByLabelText('Rename Work'), { key: 'Enter' })
+    await waitFor(() => expect(within(labelsDialog).getByRole('button', { name: 'Job' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Shopping, Milk' })).toHaveTextContent('Job')
     expect(await historyCounts(db)).toEqual({ pinned: 1, unpinned: 1, label_added: 1 })
+    fireEvent.click(within(labelsDialog).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const renamed = await screen.findByRole('dialog', { name: 'Note' })
@@ -132,8 +136,13 @@ describe('pin, archive, color and labels', () => {
     fireEvent.click(within(renamed).getByRole('button', { name: /^Close$/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /^Delete Job$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const deleting = await screen.findByRole('dialog', { name: 'Edit labels' })
+    fireEvent.click(within(deleting).getByRole('button', { name: 'Delete Job', hidden: true }))
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Delete label?' })).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(screen.queryByRole('button', { name: /^Job$/ })).not.toBeInTheDocument())
+    fireEvent.click(within(deleting).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Shopping, Milk' })).toBeInTheDocument()
     expect(await db.count('notes')).toBe(1)
     expect(await db.count('noteVersions')).toBe(1)
@@ -168,5 +177,135 @@ describe('pin, archive, color and labels', () => {
       archived: 1,
       unarchived: 1,
     })
+  })
+})
+
+function labelNames(dialog: HTMLElement): string[] {
+  return [...dialog.querySelectorAll('.edit-label-name')].map((node) => node.textContent ?? '')
+}
+
+describe('edit labels', () => {
+  it('shows label names and Edit labels, with no create form or per-label buttons', async () => {
+    const db = await open()
+    await db.put('labels', { id: 'work', userId: null, name: 'Work', updatedAt: now })
+    await renderHome(db)
+
+    const nav = screen.getByRole('navigation', { name: 'Views' })
+    expect(within(nav).queryByRole('heading', { name: 'Labels' })).not.toBeInTheDocument()
+    expect(within(nav).queryByLabelText('New label')).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('button', { name: 'Create label' })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('button', { name: /^Rename / })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Work' })).toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Edit labels' })).toBeInTheDocument()
+  })
+
+  it('creates, renames and deletes from the dialog, and closes on Esc, the backdrop and Done', async () => {
+    const db = await open()
+    await db.put('noteVersions', version(note()))
+    await db.put('notes', note())
+    await renderHome(db)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit labels' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(document.documentElement.style.overflow).toBe('hidden')
+    expect(within(dialog).getByLabelText('Create new label')).toHaveFocus()
+
+    const input = within(dialog).getByLabelText('Create new label')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(input).toHaveValue('   ')
+    expect(dialog.querySelectorAll('.edit-label-name')).toHaveLength(0)
+
+    fireEvent.change(input, { target: { value: 'Temp' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(input).toHaveValue('')
+    expect(within(dialog).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: 'Work' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(labelNames(dialog)).toEqual(['Work']))
+    expect(input).toHaveValue('')
+
+    fireEvent.change(input, { target: { value: 'work' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+    fireEvent.change(input, { target: { value: 'Home' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+    await waitFor(() => expect(labelNames(dialog)).toEqual(['Home', 'Work']))
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Work' }))
+    const rename = within(dialog).getByLabelText('Rename Work')
+    fireEvent.change(rename, { target: { value: 'Nope' } })
+    fireEvent.keyDown(rename, { key: 'Escape' })
+    expect(screen.getByRole('dialog', { name: 'Edit labels' })).toBeInTheDocument()
+    expect(labelNames(dialog)).toEqual(['Home', 'Work'])
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Work' }))
+    fireEvent.change(within(dialog).getByLabelText('Rename Work'), { target: { value: 'Job' } })
+    fireEvent.blur(within(dialog).getByLabelText('Rename Work'))
+    await waitFor(() => expect(labelNames(dialog)).toEqual(['Home', 'Job']))
+    const side = within(screen.getByRole('navigation', { name: 'Views' })).getByRole('list', { name: 'Labels' })
+    expect(within(side).getByRole('button', { name: 'Job' })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Job', hidden: true }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete label?' })
+    expect(confirm).toHaveTextContent(
+      "We'll delete this label and remove it from all of your notes. Your notes won't be deleted.",
+    )
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog', { name: 'Delete label?' })).not.toBeInTheDocument()
+    expect(labelNames(dialog)).toEqual(['Home', 'Job'])
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Job', hidden: true }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Delete label?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Edit labels' })).toBeInTheDocument()
+    expect(labelNames(dialog)).toEqual(['Home', 'Job'])
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Job', hidden: true }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Delete label?' })).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(labelNames(dialog)).toEqual(['Home']))
+    expect(screen.getByRole('button', { name: 'Shopping, Milk' })).toBeInTheDocument()
+    expect(await db.count('notes')).toBe(1)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(document.documentElement.style.overflow).toBe('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const again = await screen.findByRole('dialog', { name: 'Edit labels' })
+    fireEvent.click(screen.getByTestId('note-modal-backdrop'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const done = await screen.findByRole('dialog', { name: 'Edit labels' })
+    fireEvent.click(within(done).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(again).not.toBeInTheDocument()
+  })
+
+  it('uses the same order in the side list and the note label picker', async () => {
+    const db = await open()
+    await db.put('noteVersions', version(note()))
+    await db.put('notes', note())
+    await db.put('labels', { id: 'c', userId: null, name: 'banana', updatedAt: now })
+    await db.put('labels', { id: 'a', userId: null, name: '1. 10', updatedAt: now })
+    await db.put('labels', { id: 'b', userId: null, name: '1. 9', updatedAt: now })
+    await renderHome(db)
+
+    const nav = screen.getByRole('navigation', { name: 'Views' })
+    const side = within(await within(nav).findByRole('list', { name: 'Labels' }))
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+    expect(side).toEqual(['1. 9', '1. 10', 'banana', 'Edit labels'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
+    const noteDialog = await screen.findByRole('dialog', { name: 'Note' })
+    expect(
+      within(noteDialog)
+        .getAllByRole('checkbox')
+        .map((box) => box.closest('label')?.textContent?.trim()),
+    ).toEqual(['1. 9', '1. 10', 'banana'])
   })
 })

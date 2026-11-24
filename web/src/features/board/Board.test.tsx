@@ -98,7 +98,7 @@ describe('board', () => {
     const nav = screen.getByRole('navigation', { name: 'Views' })
     expect(within(nav).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Reminders' })).toBeInTheDocument()
-    expect(within(nav).getByText('Labels')).toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Edit labels' })).toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Archive' })).toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Trash' })).toBeInTheDocument()
     expect(await screen.findByText('Take a note', { selector: '.empty-state' })).toBeInTheDocument()

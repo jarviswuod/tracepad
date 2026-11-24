@@ -51,3 +51,27 @@
 .note-modal-actions button:hover {
   background: rgba(95, 99, 104, 0.157);
 }
+
+/* Edit labels: narrow, near the top, only as tall as its rows. */
+.note-modal-backdrop-labels {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.note-modal-labels {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+}
+
+.note-modal-labels .note-modal-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.note-modal-labels .note-modal-actions {
+  flex: none;
+  border-top: 1px solid #e0e0e0;
+}

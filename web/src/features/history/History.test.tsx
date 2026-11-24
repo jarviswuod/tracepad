@@ -152,7 +152,7 @@ describe('history page', () => {
     for (const name of ['Notes', 'Reminders', 'Archive', 'Trash', 'Work']) {
       expect(within(nav).getByRole('button', { name })).toBeInTheDocument()
     }
-    expect(within(nav).getByText('Labels')).toBeInTheDocument()
+    expect(within(nav).getByRole('list', { name: 'Labels' })).toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: 'Take a note' })).toBeNull()
     const title = screen.getByRole('heading', { name: 'Groceries' })

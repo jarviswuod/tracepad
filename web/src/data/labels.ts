@@ -1,11 +1,18 @@
 import type { HistoryEvent, IsoTimestamp, Label, NoteLabel, OutboxRow, Uuid } from '../domain/types'
 import type { TracepadDatabase } from './db'
 
-/** Labels in name order, for the side list. */
+/** Case-insensitive, digits before letters, numbers in natural order ("1. 9" before "1. 10"). */
+const labelNameOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
+export function compareLabelNames(a: string, b: string): number {
+  return labelNameOrder.compare(a, b)
+}
+
+/** Labels in name order, for the side list and the note's label picker. */
 export async function listLabels(db: TracepadDatabase): Promise<Label[]> {
   const labels = await db.getAll('labels')
   return labels.sort(
-    (a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    (a, b) => compareLabelNames(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   )
 }
 

@@ -7,7 +7,7 @@ test('creates notes, pins one, switches sort and views, and toggles grid and lis
   const nav = page.getByRole('navigation', { name: 'Views' })
   await expect(nav.getByRole('button', { name: 'Notes', exact: true })).toBeVisible()
   await expect(nav.getByRole('button', { name: 'Reminders', exact: true })).toBeVisible()
-  await expect(nav.getByText('Labels', { exact: true })).toBeVisible()
+  await expect(nav.getByRole('button', { name: 'Edit labels', exact: true })).toBeVisible()
   await expect(nav.getByRole('button', { name: 'Archive', exact: true })).toBeVisible()
   await expect(nav.getByRole('button', { name: 'Trash', exact: true })).toBeVisible()
   await expect(page.locator('.empty-state')).toHaveText('Take a note')
