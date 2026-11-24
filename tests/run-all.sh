@@ -11,7 +11,7 @@ fi
 
 if [ -f "$root/web/package.json" ]; then
   echo "== web =="
-  (cd "$root/web" && npm test && npm run e2e)
+  (cd "$root/web" && npm run typecheck && npm test && npm run e2e)
   ran=1
 fi
 

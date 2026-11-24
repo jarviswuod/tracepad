@@ -10,7 +10,7 @@ It checks the repository skeleton (`tests/repo-skeleton.sh`), then runs the test
 
 | Part       | What runs                                      | Needs                         |
 | ---------- | ---------------------------------------------- | ----------------------------- |
-| `web/`     | Vitest (`npm test`), then Playwright (`npm run e2e`) | Node, Playwright browsers |
+| `web/`     | Type-check (`npm run typecheck`), Vitest (`npm test`), then Playwright (`npm run e2e`) | Node, Playwright browsers |
 | `server/`  | JUnit 5 + Testcontainers (`./mvnw verify`)     | Java 21, Docker running       |
 | `android/` | JUnit + Room in-memory tests (`./gradlew test`) | Android SDK                  |
 
