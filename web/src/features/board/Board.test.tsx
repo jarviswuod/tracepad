@@ -110,7 +110,7 @@ describe('board', () => {
     await waitFor(() =>
       expect(within(nav).getByRole('button', { name: 'Reminders' })).toHaveAttribute('aria-current', 'page'),
     )
-    expect(screen.getByText('Take a note', { selector: '.empty-state' })).toBeInTheDocument()
+    expect(await screen.findByText('Take a note', { selector: '.empty-state' })).toBeInTheDocument()
   })
 
   it('pins first, switches sort and layout, shows color, and opens the editor', async () => {
@@ -202,6 +202,9 @@ describe('board', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Trash' }))
     await screen.findByRole('button', { name: 'Gone, c' })
     expect(screen.getByText('30 days left')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore Gone, c' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Gone, c forever' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete Shown, a forever' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Pinned' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Old, b' })).not.toBeInTheDocument()
 

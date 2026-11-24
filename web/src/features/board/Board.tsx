@@ -19,6 +19,9 @@ type BoardProps = {
   onLayout: (layout: BoardLayout) => void
   onOpen: (noteId: Uuid) => void
   onCreate: () => void
+  onRestore: (noteId: Uuid) => void
+  onDeleteForever: (noteId: Uuid) => void
+  onEmptyTrash: () => void
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -179,11 +182,36 @@ export function Board({
   onLayout,
   onOpen,
   onCreate,
+  onRestore,
+  onDeleteForever,
+  onEmptyTrash,
 }: BoardProps) {
   const pinned = cards.filter((card) => card.note.isPinned)
   const others = cards.filter((card) => !card.note.isPinned)
   // Trash keeps the pin flag but does not show it.
   const showGroups = view.kind !== 'trash' && pinned.length > 0
+
+  function renderCard(card: BoardCard) {
+    const heading = cardLabel(card.version.title, card.version.body)
+    return (
+      <NoteCard key={card.note.id} card={card} onOpen={() => onOpen(card.note.id)}>
+        {view.kind === 'trash' && card.daysLeft != null ? (
+          <div className="trash-actions">
+            <button type="button" aria-label={`Restore ${heading}`} onClick={() => onRestore(card.note.id)}>
+              Restore
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete ${heading} forever`}
+              onClick={() => onDeleteForever(card.note.id)}
+            >
+              Delete forever
+            </button>
+          </div>
+        ) : null}
+      </NoteCard>
+    )
+  }
 
   return (
     <BoardShell labels={labels} view={view} onView={onView}>
@@ -193,6 +221,11 @@ export function Board({
         </button>
       )}
       <div className="board-toolbar">
+        {view.kind === 'trash' && cards.some((card) => card.daysLeft != null) ? (
+          <button type="button" className="empty-trash" onClick={onEmptyTrash}>
+            Empty trash
+          </button>
+        ) : null}
         <label htmlFor="board-sort">
           Sort
           <select
@@ -218,19 +251,13 @@ export function Board({
             <h2>Pinned</h2>
           </li>
         ) : null}
-        {(showGroups ? pinned : cards).map((card) => (
-          <NoteCard key={card.note.id} card={card} onOpen={() => onOpen(card.note.id)} />
-        ))}
+        {(showGroups ? pinned : cards).map((card) => renderCard(card))}
         {showGroups && others.length > 0 ? (
           <li className="board-heading">
             <h2>Others</h2>
           </li>
         ) : null}
-        {showGroups
-          ? others.map((card) => (
-              <NoteCard key={card.note.id} card={card} onOpen={() => onOpen(card.note.id)} />
-            ))
-          : null}
+        {showGroups ? others.map((card) => renderCard(card)) : null}
       </ul>
     </BoardShell>
   )

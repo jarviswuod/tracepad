@@ -25,6 +25,8 @@ type EditorProps = {
   onLeft: () => void
   /** Called once the note is saved, to show its history page. */
   onHistory: () => void
+  /** Save or discard, then let the screen move the note to the trash. */
+  onTrash: () => void
   ref?: Ref<EditorHandle>
 }
 
@@ -39,7 +41,7 @@ type EditorText = {
   body: string
 }
 
-export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory, ref }: EditorProps) {
+export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory, onTrash, ref }: EditorProps) {
   // Title and body live here. Draft saves and outbox checks never write them back.
   const [title, setTitle] = useState(openedVersion?.title ?? '')
   const [body, setBody] = useState(openedVersion?.body ?? '')
@@ -59,6 +61,8 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory,
   onLeftRef.current = onLeft
   const onHistoryRef = useRef(onHistory)
   onHistoryRef.current = onHistory
+  const onTrashRef = useRef(onTrash)
+  onTrashRef.current = onTrash
 
   const cardRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -256,6 +260,9 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory,
         onChange={(event) => changeBody(event.target.value)}
       />
       <div className="editor-actions">
+        <button type="button" onClick={() => void onTrashRef.current()}>
+          Move to trash
+        </button>
         <button type="button" onClick={openHistory}>
           History
         </button>

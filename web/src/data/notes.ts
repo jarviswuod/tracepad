@@ -1,6 +1,8 @@
 import type { TracepadDatabase } from './db'
+import { isTrashed, TRASH_RETENTION_DAYS } from '../domain/trash'
 import { decideVersionCut, normalizeNoteText, type NoteText } from '../domain/versioning'
 import type { Draft, IsoTimestamp, Note, NoteVersion, OutboxRow, Uuid } from '../domain/types'
+import { purgeExpiredTrash } from './trash'
 
 export type ListedNote = {
   note: Note
@@ -120,13 +122,12 @@ export type BoardQuery = {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const TRASH_WINDOW_DAYS = 30
 
 /** A note trashed at this moment has 30 days left. The count drops after each full day. */
 function daysLeftInTrash(trashedAt: IsoTimestamp, now: IsoTimestamp): number {
   const elapsed = Date.parse(now) - Date.parse(trashedAt)
-  if (!Number.isFinite(elapsed) || elapsed <= 0) return TRASH_WINDOW_DAYS
-  return Math.max(0, TRASH_WINDOW_DAYS - Math.floor(elapsed / DAY_MS))
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return TRASH_RETENTION_DAYS
+  return Math.max(0, TRASH_RETENTION_DAYS - Math.floor(elapsed / DAY_MS))
 }
 
 function compareBoard(a: Note, b: Note, sort: BoardSort): number {
@@ -144,7 +145,7 @@ function inView(
   labelNoteIds: Set<Uuid> | null,
   reminderNoteIds: Set<Uuid> | null,
 ): boolean {
-  const trashed = note.trashedAt != null
+  const trashed = isTrashed(note)
   switch (view.kind) {
     case 'notes':
       return !trashed && !note.isArchived
@@ -343,6 +344,15 @@ export function recoverLeftoverDrafts(db: TracepadDatabase): Promise<void> {
   })
   recoveryLocks.set(db.name, run)
   return run
+}
+
+/**
+ * Startup, before the board shows. Expired trash goes first so a leftover draft
+ * cannot recreate a note that is already past 30 days.
+ */
+export async function startupLocalCleanup(db: TracepadDatabase, now?: IsoTimestamp): Promise<void> {
+  await purgeExpiredTrash(db, now)
+  await recoverLeftoverDrafts(db)
 }
 
 async function commitLeftoverDrafts(db: TracepadDatabase): Promise<void> {

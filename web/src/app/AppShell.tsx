@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
-import { recoverLeftoverDrafts } from '../data/notes'
+import { startupLocalCleanup } from '../data/notes'
 import { AppRoutes } from './AppRoutes'
 
 export function AppShell() {
@@ -10,7 +10,7 @@ export function AppShell() {
     let active = true
     void openTracepadDb()
       .then(async (opened) => {
-        await recoverLeftoverDrafts(opened)
+        await startupLocalCleanup(opened)
         if (active) setDb(opened)
       })
       .catch(() => {
