@@ -21,7 +21,7 @@ Nothing here is built yet. This is the plan to review before the build starts. A
 | Accounts               | Login screens                                                                       | Spring Security, BCrypt password hashing, JWT access tokens + refresh tokens | Login screens                                 |
 | Storing the login      | Refresh token in an httpOnly cookie, access token in memory                         | —                                                                            | DataStore, encrypted with Android Keystore    |
 | Background sync        | While open; Background Sync on Chromium                                             | —                                                                            | WorkManager                                   |
-| Reminders              | Timer while the tab is open (v1), Web Push with a service worker (after the server) | Web Push sender (`web-push` Java library, VAPID keys), scheduled job         | AlarmManager (exact alarms), boot receiver    |
+| Reminders              | Local alarm primary (tab timer), Web Push backup via service worker (after server)  | Web Push sender (`web-push` Java library, VAPID keys), scheduled job         | AlarmManager (exact alarms), boot receiver    |
 | Email (password reset) | —                                                                                   | Spring Mail; Mailpit in Docker while local                                   | —                                             |
 | Tests                  | Vitest, `fake-indexeddb`, React Testing Library, Playwright                         | JUnit 5, Spring Boot Test, Testcontainers (real Postgres)                    | JUnit, Room in-memory tests, Compose UI tests |
 | Running locally        | `npm run dev`                                                                       | Docker Compose (server + Postgres + Mailpit)                                 | Android Studio emulator                       |
@@ -34,7 +34,7 @@ Nothing here is built yet. This is the plan to review before the build starts. A
 flowchart TD
     open["Open Tracepad"] --> hasAccount{"Signed in?"}
     hasAccount -->|No| register["Register"]
-    hasAccount -->|No| login["Log in"]
+    hasAccount -->|Yes| login["Log in"]
     hasAccount -->|Yes| board["Notes board"]
     register --> board
     login --> board
@@ -68,7 +68,7 @@ flowchart TD
 
 ## 3. First open
 
-**What you see:** the notes board, empty, with a "Sign in to sync" button.
+**What you see:** Sign in.
 
 **Proposed:** Tracepad works fully with an account. Notes are saved on the device, and the outbox fills up as you go. Signing out and back in later uploads everything. This keeps the app offline-first from the very first second.
 
@@ -278,7 +278,7 @@ flowchart TD
     set["Set reminder: date and time"] --> store["Store time + note ID locally"]
     store --> where{"Which device?"}
     where -->|Web, v1| timer["Timer while Tracepad is open"]
-    where -->|Web, with server| push["Server sends a Web Push at the time"]
+    where -->|Web, with server| push["Local alarm primary, server Web Push as backup"]
     where -->|Android| alarm["AlarmManager exact alarm"]
     timer --> fire["Notification"]
     push --> fire
@@ -295,7 +295,7 @@ flowchart TD
 | Time is in the past                           | Refused: "Pick a future time."                                                                  | Form check                                                |
 | Web, tab open                                 | Fires on time.                                                                                  | `setTimeout` + Notifications API                          |
 | Web, tab closed, v1                           | Doesn't fire. Shown as missed the next time you open Tracepad.                                  | Missed-reminder check on startup                          |
-| Web, tab closed, after the server exists      | The server sends the push and the browser shows it.                                             | Web Push, VAPID, service worker                           |
+| Web, tab closed, after the server exists      | Local alarm is primary; the server push is the backup if the local one didn't fire.             | Web Push, VAPID, service worker                           |
 | Notifications blocked                         | Tracepad asks once and explains. If still blocked, it shows a banner inside the app.            | Notification permission                                   |
 | Android, app closed                           | Fires on time.                                                                                  | AlarmManager `setExactAndAllowWhileIdle`                  |
 | Android, exact alarms not allowed             | Tracepad asks for the permission. Without it, the alarm may arrive a few minutes late.          | `SCHEDULE_EXACT_ALARM`                                    |
@@ -358,7 +358,7 @@ sequenceDiagram
 
 ## 15. Conflicts
 
-A conflict happens only when both devices were offline, each made an edit to the same note, and the parent on one side has moved since the other's edit. Timestamps decide — the earlier offline edit merges automatically on reconnect, and the later one surfaces as a conflict with the badge and compare view. Pin, labels, archive, ticks, and reminders never conflict. The later change wins, and both stay in history.
+A conflict happens only when 2 or more devices were offline, each made an edit to the same note, and the parent on one side has moved since the other's edit. Timestamps decide — the first edit to come online merges automatically on reconnect, and the later one surfaces as a conflict with the badge and compare view. Pin, labels, archive, ticks, and reminders never conflict for later change wins, and both stay in history.
 
 ```mermaid
 flowchart TD
@@ -378,12 +378,12 @@ flowchart TD
 
 | Possibility                                     | What happens                                                                                                                                                                              | Tech                            |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Two offline edits of the same note              | The earlier edit merges on reconnect. The later one gets the badge and compare screen.                                                                                                    | Timestamps                      |
+| Two offline edits of the same note              | The first edit to come online merges on reconnect. The later one gets the badge and compare screen.                                                                                       | Timestamps                      |
 | You pick one                                    | It becomes current on every device. The other stays in history forever.                                                                                                                   | Pointer change syncs            |
 | You pick on two devices differently             | The later pick wins.                                                                                                                                                                      | Timestamp                       |
 | Ignore the conflict                             | The badge stays on the later edit. The earlier edit has already merged.                                                                                                                   | —                               |
 | You do nothing                                  | If you do nothing, the default is to retain all information from all devices and versions. The earlier edit stays merged, the later edit stays under the badge, and nothing is discarded. | —                               |
-| Three devices conflict                          | Timestamps order the edits. Earlier ones merge. The latest is the conflict.                                                                                                               | Same rule                       |
+| Two devices conflict                            | First come, first serve edits. Earlier arrival ones merge. The later online is the conflict.                                                                                              | Same rule                       |
 | Want both texts combined                        | Not in v1. Copy from one version and edit the other, which cuts a normal version.                                                                                                         | —                               |
 | Edit on one device, trash on the other          | Both happen. The note is in the trash with the new version inside it. A banner says "Edited on Phone after being trashed. Restore?"                                                       | Trash is a flag, not a deletion |
 | Edit on one device, delete forever on the other | **Proposed**: the edit brings the note back from deletion and you're told. Your words are never silently lost.                                                                            | Server checks for a purged note |
@@ -596,7 +596,7 @@ Each numbered item is one feature: it gets built, tested with automated tests an
 11. Trash: delete, restore, undo, empty the trash, 30-day cleanup.
 12. Pin, archive, and labels get history entries. Color changes the card and is not a history entry.
 13. Checklists, with tick history entries.
-14. Search covers every note by default, and you can optionally open one label first and search only inside it.
+14. Search covers all (labeled and unlabeled) notes by default, and you can optionally open one label first and search only inside it.
 15. Reminders while the tab is open, and missed-reminder notices.
 16. The outbox: every change from steps 6 to 15 already queues a row.
 17. Offline app shell: the service worker, and the "update ready" prompt.
