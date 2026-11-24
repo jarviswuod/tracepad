@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TracepadDatabase } from '../../data/db'
-import { listLabels } from '../../data/labels'
+import {
+  addLabelToNote,
+  createLabel,
+  deleteLabel,
+  listActiveLabelIds,
+  listLabels,
+  removeLabelFromNote,
+  renameLabel,
+} from '../../data/labels'
 import {
   ensureDeviceId,
   getListedNote,
   listBoard,
+  setArchived,
+  setNoteColor,
+  setPinned,
   type BoardCard,
   type BoardSort,
   type BoardView,
@@ -14,6 +25,7 @@ import type { Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
+import { NoteMeta } from '../labels/NoteMeta'
 import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
@@ -24,6 +36,8 @@ type Session = {
   /** Null for a new note from "Take a note", which stays inline. A saved note opens in a modal. */
   version: NoteVersion | null
   color: string | null
+  isPinned: boolean
+  isArchived: boolean
 }
 
 type NotesHomeProps = {
@@ -53,11 +67,17 @@ export function NotesHome({
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
   const [labels, setLabels] = useState<Label[]>([])
+  const [activeLabelIds, setActiveLabelIds] = useState<Uuid[]>([])
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [undoId, setUndoId] = useState<Uuid | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const editorRef = useRef<EditorHandle>(null)
+  const openIdRef = useRef<Uuid | null>(null)
+  const viewRef = useRef(view)
+  const sortRef = useRef(sort)
+  viewRef.current = view
+  sortRef.current = sort
   const request = useRef(0)
   const openedOnArrival = useRef(false)
   const trashing = useRef(false)
@@ -66,15 +86,23 @@ export function NotesHome({
 
   const refresh = useCallback(async () => {
     const ticket = ++request.current
-    const [nextCards, nextLabels] = await Promise.all([
-      listBoard(db, { view, sort }),
-      listLabels(db),
-    ])
-    if (ticket !== request.current) return
-    setCards(nextCards)
-    setLabels(nextLabels)
-    setReady(true)
-  }, [db, view, sort])
+    const openId = openIdRef.current
+    try {
+      const [nextCards, nextLabels, nextActive] = await Promise.all([
+        listBoard(db, { view: viewRef.current, sort: sortRef.current }),
+        listLabels(db),
+        openId ? listActiveLabelIds(db, openId) : Promise.resolve([]),
+      ])
+      if (ticket !== request.current) return
+      setCards(nextCards)
+      setLabels(nextLabels)
+      setActiveLabelIds(nextActive)
+      setReady(true)
+    } catch {
+      // A view change can still be reading when the screen unmounts and the database closes.
+      if (ticket !== request.current) return
+    }
+  }, [db])
 
   useEffect(() => {
     let active = true
@@ -90,12 +118,23 @@ export function NotesHome({
     setCards([])
     setReady(false)
     void refresh()
-  }, [refresh])
+  }, [refresh, view, sort])
 
   async function openNote(noteId: Uuid) {
     await editorRef.current?.leave()
     const listed = await getListedNote(db, noteId)
-    setSession(listed ? { noteId, version: listed.version, color: listed.note.color } : null)
+    openIdRef.current = listed ? noteId : null
+    setSession(
+      listed
+        ? {
+            noteId,
+            version: listed.version,
+            color: listed.note.color,
+            isPinned: listed.note.isPinned,
+            isArchived: listed.note.isArchived,
+          }
+        : null,
+    )
     await refresh()
   }
 
@@ -106,7 +145,14 @@ export function NotesHome({
   })
 
   function startNote() {
-    setSession({ noteId: crypto.randomUUID(), version: null, color: null })
+    openIdRef.current = null
+    setSession({
+      noteId: crypto.randomUUID(),
+      version: null,
+      color: null,
+      isPinned: false,
+      isArchived: false,
+    })
   }
 
   async function currentDeviceId(): Promise<Uuid> {
@@ -114,6 +160,79 @@ export function NotesHome({
     const id = await ensureDeviceId(db)
     setDeviceId(id)
     return id
+  }
+
+  async function changePin(pinned: boolean) {
+    const current = session
+    if (!current?.version) return
+    const changed = await setPinned(db, { noteId: current.noteId, pinned, deviceId: await currentDeviceId() })
+    if (!changed) return
+    setSession((next) => (next?.noteId === current.noteId ? { ...next, isPinned: pinned } : next))
+    await refresh()
+  }
+
+  async function changeArchive(archived: boolean) {
+    const current = session
+    if (!current?.version) return
+    const changed = await setArchived(db, {
+      noteId: current.noteId,
+      archived,
+      deviceId: await currentDeviceId(),
+    })
+    if (!changed) return
+    setSession((next) => (next?.noteId === current.noteId ? { ...next, isArchived: archived } : next))
+    await refresh()
+  }
+
+  async function changeColor(color: string | null) {
+    const current = session
+    if (!current?.version) return
+    const changed = await setNoteColor(db, { noteId: current.noteId, color })
+    if (!changed) return
+    setSession((next) => (next?.noteId === current.noteId ? { ...next, color } : next))
+    await refresh()
+  }
+
+  async function toggleLabel(labelId: Uuid, on: boolean) {
+    const current = session
+    if (!current?.version) return
+    const device = await currentDeviceId()
+    if (on) await addLabelToNote(db, { noteId: current.noteId, labelId, deviceId: device })
+    else await removeLabelFromNote(db, { noteId: current.noteId, labelId, deviceId: device })
+    await refresh()
+  }
+
+  async function addLabelByName(name: string) {
+    const current = session
+    if (!current?.version) return
+    const trimmed = name.trim()
+    if (trimmed === '') return
+    const existing = labels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase())
+    const label = existing ?? (await createLabel(db, { name: trimmed }))
+    if (!label) return
+    await addLabelToNote(db, {
+      noteId: current.noteId,
+      labelId: label.id,
+      deviceId: await currentDeviceId(),
+    })
+    await refresh()
+  }
+
+  async function createFromSidebar(name: string): Promise<boolean> {
+    const created = await createLabel(db, { name })
+    await refresh()
+    return created != null
+  }
+
+  async function renameFromSidebar(labelId: Uuid, name: string): Promise<boolean> {
+    const renamed = await renameLabel(db, { labelId, name })
+    await refresh()
+    return renamed != null
+  }
+
+  async function deleteFromSidebar(labelId: Uuid) {
+    await deleteLabel(db, { labelId, deviceId: await currentDeviceId() })
+    await refresh()
   }
 
   async function trashSession() {
@@ -170,7 +289,24 @@ export function NotesHome({
         openedVersion={session.version}
         onHistory={() => onHistory(session.noteId)}
         onTrash={() => void trashSession()}
+        actions={
+          session.version ? (
+            <NoteMeta
+              isPinned={session.isPinned}
+              isArchived={session.isArchived}
+              color={session.color}
+              labels={labels}
+              activeLabelIds={activeLabelIds}
+              onPin={(pinned) => void changePin(pinned)}
+              onArchive={(archived) => void changeArchive(archived)}
+              onColor={(color) => void changeColor(color)}
+              onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
+              onAddLabel={(name) => void addLabelByName(name)}
+            />
+          ) : null
+        }
         onLeft={() => {
+          openIdRef.current = null
           setSession(null)
           void refresh()
         }}
@@ -198,6 +334,9 @@ export function NotesHome({
         onRestore={(noteId) => void restore(noteId)}
         onDeleteForever={(noteId) => setPendingDelete({ kind: 'note', noteId })}
         onEmptyTrash={() => setPendingDelete({ kind: 'all' })}
+        onCreateLabel={createFromSidebar}
+        onRenameLabel={renameFromSidebar}
+        onDeleteLabel={(labelId) => void deleteFromSidebar(labelId)}
       />
       {opened && editor ? (
         <NoteModal

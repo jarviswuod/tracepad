@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
+import { LabelSection } from '../labels/LabelSection'
 import './board.css'
 
 export type BoardLayout = 'grid' | 'list'
@@ -25,6 +26,9 @@ type BoardProps = {
   onRestore: (noteId: Uuid) => void
   onDeleteForever: (noteId: Uuid) => void
   onEmptyTrash: () => void
+  onCreateLabel: (name: string) => Promise<boolean>
+  onRenameLabel: (labelId: Uuid, name: string) => Promise<boolean>
+  onDeleteLabel: (labelId: Uuid) => void
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -88,6 +92,15 @@ export function NoteCard({
         {title ? <span className="note-title">{title}</span> : null}
         {preview ? <span className={title ? 'note-preview' : 'note-title'}>{preview}</span> : null}
         {!title && !preview ? <span className="note-title">{UNTITLED}</span> : null}
+        {card.labels.length > 0 ? (
+          <span className="note-chips">
+            {card.labels.map((label) => (
+              <span key={label.id} className="note-chip">
+                {label.name}
+              </span>
+            ))}
+          </span>
+        ) : null}
         {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
       </button>
       {children}
@@ -100,11 +113,17 @@ export function BoardShell({
   labels,
   view,
   onView,
+  onCreateLabel,
+  onRenameLabel,
+  onDeleteLabel,
   children,
 }: {
   labels: Label[]
   view: BoardView | null
   onView: (view: BoardView) => void
+  onCreateLabel?: (name: string) => Promise<boolean>
+  onRenameLabel?: (labelId: Uuid, name: string) => Promise<boolean>
+  onDeleteLabel?: (labelId: Uuid) => void
   children: ReactNode
 }) {
   return (
@@ -123,19 +142,14 @@ export function BoardShell({
               </SideButton>
             </li>
             <li>
-              <div className="side-heading">Labels</div>
-              <ul className="side-label-list">
-                {labels.map((label) => (
-                  <li key={label.id}>
-                    <SideButton
-                      current={view?.kind === 'label' && view.labelId === label.id}
-                      onClick={() => onView({ kind: 'label', labelId: label.id })}
-                    >
-                      {label.name}
-                    </SideButton>
-                  </li>
-                ))}
-              </ul>
+              <LabelSection
+                labels={labels}
+                currentLabelId={view?.kind === 'label' ? view.labelId : null}
+                onOpen={(labelId) => onView({ kind: 'label', labelId })}
+                onCreate={onCreateLabel}
+                onRename={onRenameLabel}
+                onDelete={onDeleteLabel}
+              />
             </li>
             <li>
               <SideButton current={view?.kind === 'archive'} onClick={() => onView({ kind: 'archive' })}>
@@ -192,6 +206,9 @@ export function Board({
   onRestore,
   onDeleteForever,
   onEmptyTrash,
+  onCreateLabel,
+  onRenameLabel,
+  onDeleteLabel,
 }: BoardProps) {
   const pinned = cards.filter((card) => card.note.isPinned)
   const others = cards.filter((card) => !card.note.isPinned)
@@ -226,7 +243,14 @@ export function Board({
   }
 
   return (
-    <BoardShell labels={labels} view={view} onView={onView}>
+    <BoardShell
+      labels={labels}
+      view={view}
+      onView={onView}
+      onCreateLabel={onCreateLabel}
+      onRenameLabel={onRenameLabel}
+      onDeleteLabel={onDeleteLabel}
+    >
       {editor ?? (
         <button type="button" className="take-note" onClick={onCreate} disabled={createDisabled}>
           Take a note

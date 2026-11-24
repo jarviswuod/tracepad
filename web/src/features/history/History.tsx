@@ -153,7 +153,7 @@ export function HistoryPage({
             entry.kind === 'version' ? (
               <NoteCard
                 key={entry.id}
-                card={{ note: listed.note, version: entry.version, daysLeft: null }}
+                card={{ note: listed.note, version: entry.version, daysLeft: null, labels: [] }}
                 open={entry.id === opened?.id}
                 onOpen={() => onOpenVersion(entry.id)}
               >

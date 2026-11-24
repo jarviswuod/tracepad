@@ -208,7 +208,7 @@ describe('board', () => {
     expect(screen.queryByRole('heading', { name: 'Pinned' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Old, b' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Work' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Work$/ }))
     await screen.findByRole('button', { name: 'Old, b' })
     expect(screen.queryByRole('button', { name: 'Gone, c' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Shown, a' })).not.toBeInTheDocument()

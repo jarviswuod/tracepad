@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { TracepadDatabase } from '../../data/db'
 import { clearDraft, commitNoteText, saveDraft } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
@@ -29,6 +29,8 @@ type EditorProps = {
   onHistory: () => void
   /** Save or discard, then let the screen move the note to the trash. */
   onTrash: () => void
+  /** Pin, archive, color and labels. Omitted until the note has a row. */
+  actions?: ReactNode
   ref?: Ref<EditorHandle>
 }
 
@@ -43,7 +45,17 @@ type EditorText = {
   body: string
 }
 
-export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory, onTrash, ref }: EditorProps) {
+export function Editor({
+  db,
+  deviceId,
+  noteId,
+  openedVersion,
+  onLeft,
+  onHistory,
+  onTrash,
+  actions,
+  ref,
+}: EditorProps) {
   // Title and body live here. Draft saves and outbox checks never write them back.
   const [title, setTitle] = useState(openedVersion?.title ?? '')
   const [body, setBody] = useState(openedVersion?.body ?? '')
@@ -262,6 +274,7 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory,
         value={body}
         onChange={(event) => changeBody(event.target.value)}
       />
+      {actions}
       <div className="editor-actions">
         <button type="button" onClick={() => void onTrashRef.current()}>
           Move to trash

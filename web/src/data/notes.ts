@@ -1,7 +1,17 @@
 import type { TracepadDatabase } from './db'
 import { isTrashed, TRASH_RETENTION_DAYS } from '../domain/trash'
 import { decideVersionCut, normalizeNoteText, type NoteText } from '../domain/versioning'
-import type { Draft, IsoTimestamp, Note, NoteVersion, OutboxRow, Uuid } from '../domain/types'
+import type {
+  Draft,
+  HistoryEvent,
+  IsoTimestamp,
+  Label,
+  Note,
+  NoteLabel,
+  NoteVersion,
+  OutboxRow,
+  Uuid,
+} from '../domain/types'
 import { purgeExpiredTrash } from './trash'
 
 export type ListedNote = {
@@ -109,9 +119,16 @@ export type BoardView =
   | { kind: 'trash' }
   | { kind: 'label'; labelId: Uuid }
 
+export type CardLabel = {
+  id: Uuid
+  name: string
+}
+
 export type BoardCard = ListedNote & {
   /** Days left out of 30. Set only on the trash view. */
   daysLeft: number | null
+  /** Active labels on this note, by name. A removed label is left off. */
+  labels: CardLabel[]
 }
 
 export type BoardQuery = {
@@ -166,6 +183,24 @@ function inView(
   }
 }
 
+function chipsByNote(storedLabels: Label[], links: NoteLabel[]): Map<Uuid, CardLabel[]> {
+  const names = new Map(storedLabels.map((label) => [label.id, label.name]))
+  const byNote = new Map<Uuid, CardLabel[]>()
+  for (const link of links) {
+    if (link.isRemoved) continue
+    const name = names.get(link.labelId)
+    if (name == null) continue
+    const chip: CardLabel = { id: link.labelId, name }
+    const list = byNote.get(link.noteId)
+    if (list) list.push(chip)
+    else byNote.set(link.noteId, [chip])
+  }
+  for (const list of byNote.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  }
+  return byNote
+}
+
 function notesForView(db: TracepadDatabase, view: BoardView, sort: BoardSort): Promise<Note[]> {
   if (view.kind === 'trash') return db.getAllFromIndex('notes', 'byTrashedAt')
   if (sort === 'created') return db.getAllFromIndex('notes', 'byCreatedAt')
@@ -176,15 +211,21 @@ function notesForView(db: TracepadDatabase, view: BoardView, sort: BoardSort): P
  * Pinned notes first, then recently edited or newest created.
  * Notes and Archive hide trash. Archive is archived only.
  * A label includes archived notes. Trash is trashed notes, with days left out of 30.
+ * Each card carries its active label chips.
  */
 export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promise<BoardCard[]> {
   const now = query.now ?? new Date().toISOString()
   const notes = await notesForView(db, query.view, query.sort)
+  const storedLabels = await db.getAll('labels')
+  const links = await db.getAll('noteLabels')
+  const chips = chipsByNote(storedLabels, links)
 
   let labelNoteIds: Set<Uuid> | null = null
   if (query.view.kind === 'label') {
-    const links = await db.getAllFromIndex('noteLabels', 'byLabelId', query.view.labelId)
-    labelNoteIds = new Set(links.filter((link) => !link.isRemoved).map((link) => link.noteId))
+    const labelId = query.view.labelId
+    labelNoteIds = new Set(
+      links.filter((link) => link.labelId === labelId && !link.isRemoved).map((link) => link.noteId),
+    )
   }
 
   let reminderNoteIds: Set<Uuid> | null = null
@@ -205,6 +246,7 @@ export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promis
       note,
       version,
       daysLeft: query.view.kind === 'trash' && note.trashedAt ? daysLeftInTrash(note.trashedAt, now) : null,
+      labels: chips.get(note.id) ?? [],
     })
   }
   return cards
@@ -452,4 +494,104 @@ async function cutVersion(
 
   await finishTransaction(writing, tx.done)
   return input.versionId
+}
+
+type NoteFlag = 'pinned' | 'unpinned' | 'archived' | 'unarchived'
+
+function historyEvent(
+  noteId: Uuid,
+  deviceId: Uuid,
+  type: NoteFlag,
+  occurredAt: IsoTimestamp,
+): HistoryEvent {
+  return {
+    id: crypto.randomUUID(),
+    noteId,
+    deviceId,
+    type,
+    payload: null,
+    occurredAt,
+  }
+}
+
+/**
+ * Change one flag on the note. Same transaction: the note, one history entry, one note outbox row.
+ * Already in that state, or a missing note, is left alone. The current version is not touched.
+ */
+async function setNoteFlag(
+  db: TracepadDatabase,
+  input: {
+    noteId: Uuid
+    deviceId: Uuid
+    now?: IsoTimestamp
+    type: NoteFlag
+    apply: (note: Note) => Note | null
+  },
+): Promise<boolean> {
+  const now = nowStamp(input.now)
+  const tx = db.transaction(['notes', 'historyEvents', 'outbox'], 'readwrite')
+  let changed = false
+  const writing = (async () => {
+    const existing = await tx.objectStore('notes').get(input.noteId)
+    if (!existing) return
+    const note = input.apply(existing)
+    if (!note) return
+    await tx.objectStore('notes').put(note)
+    await tx.objectStore('historyEvents').put(historyEvent(note.id, input.deviceId, input.type, now))
+    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    changed = true
+  })()
+  await finishTransaction(writing, tx.done)
+  return changed
+}
+
+/** Pin or unpin. The note moves to or from the top of the board. No version is cut. */
+export function setPinned(
+  db: TracepadDatabase,
+  input: { noteId: Uuid; pinned: boolean; deviceId: Uuid; now?: IsoTimestamp },
+): Promise<boolean> {
+  return setNoteFlag(db, {
+    noteId: input.noteId,
+    deviceId: input.deviceId,
+    now: input.now,
+    type: input.pinned ? 'pinned' : 'unpinned',
+    apply: (note) => (note.isPinned === input.pinned ? null : { ...note, isPinned: input.pinned }),
+  })
+}
+
+/** Archive or unarchive. Archived notes leave the board and stay in their label views. No version is cut. */
+export function setArchived(
+  db: TracepadDatabase,
+  input: { noteId: Uuid; archived: boolean; deviceId: Uuid; now?: IsoTimestamp },
+): Promise<boolean> {
+  return setNoteFlag(db, {
+    noteId: input.noteId,
+    deviceId: input.deviceId,
+    now: input.now,
+    type: input.archived ? 'archived' : 'unarchived',
+    apply: (note) => (note.isArchived === input.archived ? null : { ...note, isArchived: input.archived }),
+  })
+}
+
+/**
+ * Change the card color and queue the note. Color is not a history event, and it cuts no version.
+ * The same color, or a missing note, is left alone.
+ */
+export async function setNoteColor(
+  db: TracepadDatabase,
+  input: { noteId: Uuid; color: string | null; now?: IsoTimestamp },
+): Promise<boolean> {
+  const now = nowStamp(input.now)
+  const tx = db.transaction(['notes', 'outbox'], 'readwrite')
+  let changed = false
+  const writing = (async () => {
+    const existing = await tx.objectStore('notes').get(input.noteId)
+    if (!existing || existing.color === input.color) return
+    const note: Note = { ...existing, color: input.color }
+    await tx.objectStore('notes').put(note)
+    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    changed = true
+  })()
+  await finishTransaction(writing, tx.done)
+  return changed
 }

@@ -1,0 +1,64 @@
+.note-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+}
+
+.note-meta-row,
+.color-choices,
+.note-label-picks,
+.note-label-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.note-meta-row button,
+.note-label-add button {
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+
+.color-swatch {
+  width: 1.75rem;
+  height: 1.75rem;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  padding: 0;
+  cursor: pointer;
+}
+
+.color-swatch[aria-pressed='true'] {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+.note-label-picks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.note-label-picks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.note-label-add input {
+  flex: 1;
+  min-width: 8rem;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  background: transparent;
+  color: inherit;
+}
