@@ -11,6 +11,7 @@ import {
 } from '../../data/notes'
 import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '../../data/trash'
 import type { Label, NoteVersion, Uuid } from '../../domain/types'
+import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
 import { Editor, type EditorHandle } from './Editor'
@@ -20,7 +21,9 @@ type PendingDelete = { kind: 'note'; noteId: Uuid } | { kind: 'all' }
 
 type Session = {
   noteId: Uuid
+  /** Null for a new note from "Take a note", which stays inline. A saved note opens in a modal. */
   version: NoteVersion | null
+  color: string | null
 }
 
 type NotesHomeProps = {
@@ -92,7 +95,7 @@ export function NotesHome({
   async function openNote(noteId: Uuid) {
     await editorRef.current?.leave()
     const listed = await getListedNote(db, noteId)
-    setSession(listed ? { noteId, version: listed.version } : null)
+    setSession(listed ? { noteId, version: listed.version, color: listed.note.color } : null)
     await refresh()
   }
 
@@ -103,7 +106,7 @@ export function NotesHome({
   })
 
   function startNote() {
-    setSession({ noteId: crypto.randomUUID(), version: null })
+    setSession({ noteId: crypto.randomUUID(), version: null, color: null })
   }
 
   async function currentDeviceId(): Promise<Uuid> {
@@ -156,6 +159,25 @@ export function NotesHome({
     await refresh()
   }
 
+  const editor =
+    session && deviceId ? (
+      <Editor
+        key={session.noteId}
+        ref={editorRef}
+        db={db}
+        deviceId={deviceId}
+        noteId={session.noteId}
+        openedVersion={session.version}
+        onHistory={() => onHistory(session.noteId)}
+        onTrash={() => void trashSession()}
+        onLeft={() => {
+          setSession(null)
+          void refresh()
+        }}
+      />
+    ) : null
+  const opened = session?.version != null ? session : null
+
   return (
     <>
       <Board
@@ -164,6 +186,8 @@ export function NotesHome({
         view={view}
         sort={sort}
         layout={layout}
+        editor={opened ? null : editor}
+        openNoteId={opened?.noteId ?? null}
         createDisabled={deviceId == null}
         ready={ready}
         onView={onView}
@@ -174,25 +198,17 @@ export function NotesHome({
         onRestore={(noteId) => void restore(noteId)}
         onDeleteForever={(noteId) => setPendingDelete({ kind: 'note', noteId })}
         onEmptyTrash={() => setPendingDelete({ kind: 'all' })}
-        editor={
-        session && deviceId ? (
-          <Editor
-            key={session.noteId}
-            ref={editorRef}
-            db={db}
-            deviceId={deviceId}
-            noteId={session.noteId}
-            openedVersion={session.version}
-            onHistory={() => onHistory(session.noteId)}
-            onTrash={() => void trashSession()}
-            onLeft={() => {
-              setSession(null)
-              void refresh()
-            }}
-          />
-        ) : null
-      }
       />
+      {opened && editor ? (
+        <NoteModal
+          label="Note"
+          color={opened.color}
+          onClose={() => void editorRef.current?.close()}
+          returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
+        >
+          {editor}
+        </NoteModal>
+      ) : null}
       {undoId ? <UndoSnackbar onUndo={() => void undoTrash()} /> : null}
       {pendingDelete ? (
         <ConfirmDialog

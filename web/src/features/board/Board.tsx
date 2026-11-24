@@ -11,7 +11,10 @@ type BoardProps = {
   view: BoardView
   sort: BoardSort
   layout: BoardLayout
+  /** The inline editor for a new note, shown in place of "Take a note". */
   editor: ReactNode
+  /** The note open in a modal, if any. */
+  openNoteId: Uuid | null
   createDisabled: boolean
   ready: boolean
   onView: (view: BoardView) => void
@@ -58,17 +61,20 @@ function SideButton({
 
 export function NoteCard({
   card,
+  open = false,
   onOpen,
   children,
 }: {
   card: BoardCard
+  /** Open in a modal. The card keeps its slot but is hidden. */
+  open?: boolean
   onOpen: () => void
   children?: ReactNode
 }) {
   const title = card.version.title
   const preview = card.version.body
   return (
-    <li>
+    <li style={open ? { visibility: 'hidden' } : undefined}>
       <button
         type="button"
         className="note-card"
@@ -175,6 +181,7 @@ export function Board({
   sort,
   layout,
   editor,
+  openNoteId,
   createDisabled,
   ready,
   onView,
@@ -194,7 +201,12 @@ export function Board({
   function renderCard(card: BoardCard) {
     const heading = cardLabel(card.version.title, card.version.body)
     return (
-      <NoteCard key={card.note.id} card={card} onOpen={() => onOpen(card.note.id)}>
+      <NoteCard
+        key={card.note.id}
+        card={card}
+        open={card.note.id === openNoteId}
+        onOpen={() => onOpen(card.note.id)}
+      >
         {view.kind === 'trash' && card.daysLeft != null ? (
           <div className="trash-actions">
             <button type="button" aria-label={`Restore ${heading}`} onClick={() => onRestore(card.note.id)}>

@@ -204,7 +204,7 @@ describe('history page', () => {
     expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('opens a version by clicking its card, as plain text in the editor’s place, then goes back', async () => {
+  it('opens a version by clicking its card, as plain text in the note modal, then goes back', async () => {
     const db = await seed()
     renderAt(db, `/history/${noteId}`)
     const list = await historyList()
@@ -212,7 +212,7 @@ describe('history page', () => {
     fireEvent.click(within(list).getByRole('button', { name: 'Groceries, alpha' }))
     const old = await screen.findByRole('article', { name: 'Old version' })
     expect(old).toHaveClass('editor')
-    expect(old.parentElement?.firstElementChild).toBe(old)
+    expect(screen.getByRole('dialog', { name: 'Version' })).toContainElement(old)
     const [title, body] = Array.from(old.querySelectorAll('p'))
     expect(title).toHaveTextContent('Groceries')
     expect(body).toHaveTextContent('alpha')
@@ -220,11 +220,12 @@ describe('history page', () => {
     expect(old.querySelector('[contenteditable="true"]')).toBeNull()
     expect(old).not.toHaveTextContent(/Read-only/i)
     expect(old).not.toHaveTextContent(color)
-    expect(screen.queryByRole('heading', { name: 'Groceries' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Groceries' })).toBeInTheDocument()
 
     fireEvent.click(within(old).getByRole('button', { name: 'Back to history' }))
-    expect(await screen.findByRole('heading', { name: 'Groceries' })).toBeInTheDocument()
-    expect(screen.queryByRole('article', { name: 'Old version' })).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'Old version' })).toBeNull())
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Groceries' })).toBeInTheDocument()
   })
 
   it('opens an old version straight from its address', async () => {

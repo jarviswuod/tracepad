@@ -4,6 +4,7 @@ import { listNoteHistory } from '../../data/history'
 import { listLabels } from '../../data/labels'
 import { ensureDeviceId, getListedNote, type BoardView, type ListedNote } from '../../data/notes'
 import type { HistoryEvent, Label, NoteVersion, Uuid } from '../../domain/types'
+import { NoteModal } from '../../ui/NoteModal'
 import { BoardShell, LayoutToggle, NoteCard, cardHeading, type BoardLayout } from '../board/Board'
 import '../editor/editor.css'
 import { compareVersions, orderVersions, versionText, type DiffPiece } from './compare'
@@ -115,13 +116,9 @@ export function HistoryPage({
 
   return (
     <BoardShell labels={labels} view={null} onView={onView}>
-      {opened ? (
-        <OldVersion version={opened} onBack={onCloseVersion} />
-      ) : (
-        <h2 className="take-note history-title">
-          {cardHeading(listed?.version.title ?? null, listed?.version.body ?? null)}
-        </h2>
-      )}
+      <h2 className="take-note history-title">
+        {cardHeading(listed?.version.title ?? null, listed?.version.body ?? null)}
+      </h2>
       <div className="board-toolbar">
         {backToNote}
         <label htmlFor="history-sort">
@@ -157,6 +154,7 @@ export function HistoryPage({
               <NoteCard
                 key={entry.id}
                 card={{ note: listed.note, version: entry.version, daysLeft: null }}
+                open={entry.id === opened?.id}
                 onOpen={() => onOpenVersion(entry.id)}
               >
                 <div className="history-meta">
@@ -184,6 +182,11 @@ export function HistoryPage({
           )}
         </ul>
       )}
+      {opened ? (
+        <NoteModal label="Version" color={listed?.note.color ?? null} onClose={onCloseVersion}>
+          <OldVersion version={opened} onBack={onCloseVersion} />
+        </NoteModal>
+      ) : null}
     </BoardShell>
   )
 }

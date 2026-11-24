@@ -241,7 +241,7 @@ describe('saving dot', () => {
     expect(body).toHaveValue('Milk')
     expect(screen.queryByLabelText('Unsaved')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Not synced yet')).not.toBeInTheDocument()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('dialog')).toEqual([screen.getByRole('dialog', { name: 'Note' })])
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     fireEvent.change(body, { target: { value: 'Milk and tea' } })

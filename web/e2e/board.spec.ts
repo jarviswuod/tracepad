@@ -19,7 +19,7 @@ test('creates notes, pins one, switches sort and views, and toggles grid and lis
   await createNote(page, 'Beta', 'Berries')
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
   await page.getByLabel('Body').fill('Applesauce')
-  await page.getByRole('heading', { name: 'Tracepad' }).click()
+  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'Close' }).click()
   await expect(page.getByLabel('Title')).toHaveCount(0)
 
   await expect.poll(() => cardLabels(page)).toEqual(['Alpha, Applesauce', 'Beta, Berries'])

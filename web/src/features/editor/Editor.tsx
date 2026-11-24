@@ -15,6 +15,8 @@ export const PENDING_SYNC_POLL_MS = 1000
 export type EditorHandle = {
   /** Save or discard, and resolve once the database write has finished. */
   leave: () => Promise<void>
+  /** Leave the note, then call `onLeft`. Safe to call more than once. */
+  close: () => Promise<void>
 }
 
 type EditorProps = {
@@ -181,7 +183,7 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory,
     )
   }
 
-  useImperativeHandle(ref, () => ({ leave }), [leave])
+  useImperativeHandle(ref, () => ({ leave, close: requestClose }), [leave, requestClose])
 
   useEffect(() => {
     return () => clearTimer()
@@ -205,6 +207,7 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory,
       if (!(target instanceof Node) || !target.isConnected) return
       const card = cardRef.current
       if (!card || card.contains(target)) return
+      if (card.closest('[aria-modal="true"]')?.contains(target)) return
       if (target instanceof Element && target.closest('[data-note-id]')) return
       void requestClose()
     }

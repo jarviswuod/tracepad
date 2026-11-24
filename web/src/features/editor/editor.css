@@ -12,6 +12,14 @@
   padding: 0.75rem 1.75rem 0.75rem 1rem;
 }
 
+.note-modal .editor {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .saving-dot {
   position: absolute;
   top: 0.85rem;

@@ -10,7 +10,7 @@ test('creates a note, edits it, leaves, and keeps two versions', async ({ page }
 
   await page.getByRole('button', { name: 'Groceries' }).click()
   await page.getByLabel('Body').fill('Milk and bread')
-  await page.getByRole('heading', { name: 'Tracepad' }).click()
+  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'Close' }).click()
   await expect(page.getByRole('button', { name: 'Milk and bread' })).toBeVisible()
 
   const stored = await page.evaluate(async () => {
