@@ -3,7 +3,8 @@ import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Note, NoteVersion, Reminder } from '../../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
-import { NotesHome } from '../editor/NotesHome'
+import { MemoryRouter } from 'react-router-dom'
+import { AppRoutes } from '../../app/AppRoutes'
 
 const opened: TracepadDatabase[] = []
 const names: string[] = []
@@ -75,10 +76,10 @@ function reminder(noteId: string): Reminder {
 
 async function renderHome(db: TracepadDatabase) {
   render(
-    <>
+    <MemoryRouter>
       <h1>Tracepad</h1>
-      <NotesHome db={db} />
-    </>,
+      <AppRoutes db={db} />
+    </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByRole('button', { name: 'Take a note' })).toBeEnabled())
 }

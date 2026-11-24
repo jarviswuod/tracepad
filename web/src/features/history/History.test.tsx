@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { deleteDB } from 'idb'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { HistoryEvent, Note, NoteVersion } from '../../domain/types'
+import { AppRoutes } from '../../app/AppRoutes'
+import type { HistoryEvent, Label, Note, NoteVersion } from '../../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
-import { NotesHome } from '../editor/NotesHome'
 import { formatHistoryTime } from './timeline'
 
 const opened: TracepadDatabase[] = []
@@ -30,14 +31,20 @@ const eventAt = '2026-11-24T11:00:00.000Z'
 const newerAt = '2026-11-24T12:00:00.000Z'
 const color = '#f28b82'
 
-function version(id: string, createdAt: string, body: string, parentVersionId: string | null): NoteVersion {
+function version(
+  id: string,
+  createdAt: string,
+  body: string,
+  parentVersionId: string | null,
+  title = 'Groceries',
+): NoteVersion {
   return {
     id,
     noteId,
     parentVersionId,
     deviceId,
     kind: 'text',
-    title: 'Groceries',
+    title,
     body,
     checklistItems: null,
     createdAt,
@@ -71,58 +78,169 @@ function pinnedEvent(): HistoryEvent {
   }
 }
 
-async function renderNote() {
+const workLabel: Label = {
+  id: 'label-work',
+  userId: null,
+  name: 'Work',
+  updatedAt: olderAt,
+}
+
+async function seed(newerTitle = 'Groceries') {
   const db = await open()
   await db.put('localSyncState', { deviceId, userId: null, bookmark: 0, lastSyncAt: null })
   await db.put('noteVersions', version('v-old', olderAt, 'alpha', null))
-  await db.put('noteVersions', version('v-new', newerAt, 'beta', 'v-old'))
+  await db.put('noteVersions', version('v-new', newerAt, 'beta', 'v-old', newerTitle))
   await db.put('historyEvents', pinnedEvent())
   await db.put('notes', note('v-new'))
-  render(
-    <>
-      <h1>Tracepad</h1>
-      <NotesHome db={db} />
-    </>,
-  )
-  fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+  await db.put('labels', workLabel)
   return db
 }
 
-describe('history screen', () => {
-  it('shows a mixed timeline newest first, with time and device, and no color', async () => {
-    await renderNote()
+function renderAt(db: TracepadDatabase, path: string) {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <h1>Tracepad</h1>
+      <AppRoutes db={db} />
+    </MemoryRouter>,
+  )
+}
 
-    const list = await screen.findByRole('list', { name: 'History' })
-    const items = within(list).getAllByRole('listitem')
-    expect(items.map((item) => item.textContent)).toEqual([
+async function historyList() {
+  return screen.findByRole('list', { name: 'History' })
+}
+
+function entryTexts(list: HTMLElement): string[] {
+  return within(list)
+    .getAllByRole('listitem')
+    .map((item) => item.textContent ?? '')
+}
+
+describe('history page', () => {
+  it('opens from the editor in the board’s place, keeping the side list and putting the title in the take-a-note spot', async () => {
+    const db = await seed()
+    renderAt(db, '/')
+    fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
+    fireEvent.change(await screen.findByLabelText('Body'), { target: { value: 'gamma' } })
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+
+    const list = await historyList()
+    // Leaving the editor for history cuts the typed text as a version first.
+    expect(within(list).getByRole('button', { name: 'Groceries, gamma' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Note' })).toBeNull()
+
+    const nav = screen.getByRole('navigation', { name: 'Views' })
+    for (const name of ['Notes', 'Reminders', 'Archive', 'Trash', 'Work']) {
+      expect(within(nav).getByRole('button', { name })).toBeInTheDocument()
+    }
+    expect(within(nav).getByText('Labels')).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: 'Take a note' })).toBeNull()
+    const title = screen.getByRole('heading', { name: 'Groceries' })
+    expect(title).toHaveClass('take-note')
+    expect(title.parentElement).toHaveClass('board-column')
+    expect(title.parentElement?.firstElementChild).toBe(title)
+  })
+
+  it('falls back like a board card when the current title is empty', async () => {
+    const db = await seed('')
+    renderAt(db, `/history/${noteId}`)
+    await historyList()
+    expect(document.querySelector('.history-title')).toHaveTextContent('beta')
+  })
+
+  it('shows versions as board cards with small entries between them, newest first, then oldest first', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}`)
+    const list = await historyList()
+
+    expect(list).toHaveClass('board-cards')
+    expect(screen.getByLabelText('Sort')).toHaveValue('newest')
+    expect(entryTexts(list)).toEqual([
       expect.stringContaining('beta'),
       expect.stringContaining('Pinned'),
       expect.stringContaining('alpha'),
     ])
+
+    const newest = within(list).getByRole('button', { name: 'Groceries, beta' })
+    expect(newest).toHaveClass('note-card')
+    expect(newest).toHaveStyle({ backgroundColor: color })
+    expect(within(newest).getByText('Groceries')).toHaveClass('note-title')
+    expect(within(newest).getByText('beta')).toHaveClass('note-preview')
+
+    const items = within(list).getAllByRole('listitem')
     expect(items[0]).toHaveTextContent(formatHistoryTime(newerAt))
     expect(items[0]).toHaveTextContent('This device')
+    expect(items[1]).toHaveClass('history-event')
     expect(items[1]).toHaveTextContent('phone-device')
     expect(items[1]).toHaveTextContent(formatHistoryTime(eventAt))
+    expect(within(items[1]).queryByRole('button')).toBeNull()
+
     expect(list).not.toHaveTextContent(/color/i)
     expect(list).not.toHaveTextContent(color)
+    expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull()
+    expect(screen.queryByText(/Read-only/i)).toBeNull()
     expect(screen.getByRole('button', { name: 'Compare' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'oldest' } })
+    expect(entryTexts(list)).toEqual([
+      expect.stringContaining('alpha'),
+      expect.stringContaining('Pinned'),
+      expect.stringContaining('beta'),
+    ])
   })
 
-  it('opens an old version read-only and compares two versions', async () => {
-    await renderNote()
-    await screen.findByRole('list', { name: 'History' })
+  it('opens in the board’s current layout and toggles grid and list', async () => {
+    const db = await seed()
+    renderAt(db, '/')
+    fireEvent.click(await screen.findByRole('button', { name: 'List' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Groceries: alpha' }))
-    const old = screen.getByRole('article', { name: 'Old version' })
-    expect(old).toHaveTextContent('Read-only')
-    expect(within(old).getByLabelText('Title')).toHaveValue('Groceries')
-    expect(within(old).getByLabelText('Title')).toHaveAttribute('readonly')
-    expect(within(old).getByLabelText('Body')).toHaveValue('alpha')
-    expect(within(old).getByLabelText('Body')).toHaveAttribute('readonly')
+    const list = await historyList()
+    expect(list).toHaveAttribute('data-layout', 'list')
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Grid' }))
+    expect(list).toHaveAttribute('data-layout', 'grid')
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens a version by clicking its card, as plain text in the editor’s place, then goes back', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}`)
+    const list = await historyList()
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Groceries, alpha' }))
+    const old = await screen.findByRole('article', { name: 'Old version' })
+    expect(old).toHaveClass('editor')
+    expect(old.parentElement?.firstElementChild).toBe(old)
+    const [title, body] = Array.from(old.querySelectorAll('p'))
+    expect(title).toHaveTextContent('Groceries')
+    expect(body).toHaveTextContent('alpha')
+    expect(within(old).queryByRole('textbox')).toBeNull()
+    expect(old.querySelector('[contenteditable="true"]')).toBeNull()
+    expect(old).not.toHaveTextContent(/Read-only/i)
     expect(old).not.toHaveTextContent(color)
+    expect(screen.queryByRole('heading', { name: 'Groceries' })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to history' }))
+    fireEvent.click(within(old).getByRole('button', { name: 'Back to history' }))
+    expect(await screen.findByRole('heading', { name: 'Groceries' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Old version' })).toBeNull()
+  })
+
+  it('opens an old version straight from its address', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}/v-old`)
+    const old = await screen.findByRole('article', { name: 'Old version' })
+    expect(old).toHaveTextContent('alpha')
+    expect(within(old).queryByRole('textbox')).toBeNull()
+    expect(await historyList()).toBeInTheDocument()
+  })
+
+  it('compares two versions in green and red', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}`)
+    await historyList()
+
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Groceries: beta' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Groceries: alpha' }))
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }))
@@ -135,5 +253,36 @@ describe('history screen', () => {
     expect(newer.querySelector('.diff-removed')).toBeNull()
     expect(older).not.toHaveTextContent(color)
     expect(newer).not.toHaveTextContent(color)
+    expect(screen.getByRole('navigation', { name: 'Views' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to history' }))
+    expect(await historyList()).toBeInTheDocument()
+  })
+
+  it('side list links return to the board views', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}`)
+    await historyList()
+
+    const nav = screen.getByRole('navigation', { name: 'Views' })
+    fireEvent.click(within(nav).getByRole('button', { name: 'Archive' }))
+    await waitFor(() =>
+      expect(within(screen.getByRole('navigation', { name: 'Views' })).getByRole('button', { name: 'Archive' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      ),
+    )
+    expect(screen.getByRole('list', { name: 'Board' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'History' })).toBeNull()
+  })
+
+  it('"Back to note" reopens the note in the editor', async () => {
+    const db = await seed()
+    renderAt(db, `/history/${noteId}`)
+    await historyList()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to note' }))
+    expect(await screen.findByLabelText('Title')).toHaveValue('Groceries')
+    expect(screen.getByLabelText('Body')).toHaveValue('beta')
   })
 })

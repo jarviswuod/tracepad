@@ -10,7 +10,7 @@ import {
   type BoardView,
 } from '../../data/notes'
 import type { Label, NoteVersion, Uuid } from '../../domain/types'
-import { Board } from '../board/Board'
+import { Board, type BoardLayout } from '../board/Board'
 import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
@@ -19,17 +19,38 @@ type Session = {
   version: NoteVersion | null
 }
 
-export function NotesHome({ db }: { db: TracepadDatabase }) {
+type NotesHomeProps = {
+  db: TracepadDatabase
+  view: BoardView
+  sort: BoardSort
+  layout: BoardLayout
+  /** Open this note in the editor on arrival, as "Back to note" from history does. */
+  openNoteId: Uuid | null
+  onView: (view: BoardView) => void
+  onSort: (sort: BoardSort) => void
+  onLayout: (layout: BoardLayout) => void
+  onHistory: (noteId: Uuid) => void
+}
+
+export function NotesHome({
+  db,
+  view,
+  sort,
+  layout,
+  openNoteId,
+  onView,
+  onSort,
+  onLayout,
+  onHistory,
+}: NotesHomeProps) {
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
   const [labels, setLabels] = useState<Label[]>([])
-  const [view, setView] = useState<BoardView>({ kind: 'notes' })
-  const [sort, setSort] = useState<BoardSort>('edited')
-  const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const editorRef = useRef<EditorHandle>(null)
   const request = useRef(0)
+  const openedOnArrival = useRef(false)
 
   const refresh = useCallback(async () => {
     const ticket = ++request.current
@@ -64,6 +85,12 @@ export function NotesHome({ db }: { db: TracepadDatabase }) {
     await refresh()
   }
 
+  useEffect(() => {
+    if (openNoteId == null || openedOnArrival.current) return
+    openedOnArrival.current = true
+    void openNote(openNoteId)
+  })
+
   function startNote() {
     setSession({ noteId: crypto.randomUUID(), version: null })
   }
@@ -77,9 +104,9 @@ export function NotesHome({ db }: { db: TracepadDatabase }) {
       layout={layout}
       createDisabled={deviceId == null}
       ready={ready}
-      onView={setView}
-      onSort={setSort}
-      onLayout={setLayout}
+      onView={onView}
+      onSort={onSort}
+      onLayout={onLayout}
       onOpen={(noteId) => void openNote(noteId)}
       onCreate={startNote}
       editor={
@@ -91,6 +118,7 @@ export function NotesHome({ db }: { db: TracepadDatabase }) {
             deviceId={deviceId}
             noteId={session.noteId}
             openedVersion={session.version}
+            onHistory={() => onHistory(session.noteId)}
             onLeft={() => {
               setSession(null)
               void refresh()

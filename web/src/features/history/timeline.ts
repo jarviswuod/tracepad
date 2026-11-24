@@ -1,4 +1,4 @@
-// Newest first. A version's time is createdAt; an event's time is occurredAt.
+// Newest first by default, or oldest first. A version's time is createdAt; an event's time is occurredAt.
 // Color is not a history event, so a color change never appears in this list.
 
 import type { HistoryEvent, HistoryEventType, IsoTimestamp, NoteVersion, Uuid } from '../../domain/types'
@@ -19,6 +19,8 @@ export type TimelineEntry =
       deviceId: Uuid | null
       event: HistoryEvent
     }
+
+export type HistoryOrder = 'newest' | 'oldest'
 
 export const HISTORY_EVENT_LABEL: Record<HistoryEventType, string> = {
   pinned: 'Pinned',
@@ -71,10 +73,14 @@ export function versionPreview(version: NoteVersion): string {
 }
 
 /**
- * Mix versions and history events into one timeline, newest first.
- * The same timestamp is ordered by id descending so the order stays stable.
+ * Mix versions and history events into one timeline, newest first unless asked for oldest first.
+ * The same timestamp is ordered by id descending (ascending for oldest first) so the order stays stable.
  */
-export function mergeTimeline(versions: NoteVersion[], events: HistoryEvent[]): TimelineEntry[] {
+export function mergeTimeline(
+  versions: NoteVersion[],
+  events: HistoryEvent[],
+  order: HistoryOrder = 'newest',
+): TimelineEntry[] {
   const entries: TimelineEntry[] = [
     ...versions.map((version) => ({
       kind: 'version' as const,
@@ -96,5 +102,5 @@ export function mergeTimeline(versions: NoteVersion[], events: HistoryEvent[]): 
     if (a.id !== b.id) return a.id < b.id ? 1 : -1
     return 0
   })
-  return entries
+  return order === 'oldest' ? entries.reverse() : entries
 }

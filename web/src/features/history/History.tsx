@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { TracepadDatabase } from '../../data/db'
 import { listNoteHistory } from '../../data/history'
-import type { NoteVersion, Uuid } from '../../domain/types'
+import { listLabels } from '../../data/labels'
+import { ensureDeviceId, getListedNote, type BoardView, type ListedNote } from '../../data/notes'
+import type { HistoryEvent, Label, NoteVersion, Uuid } from '../../domain/types'
+import { BoardShell, LayoutToggle, NoteCard, cardHeading, type BoardLayout } from '../board/Board'
+import '../editor/editor.css'
 import { compareVersions, orderVersions, versionText, type DiffPiece } from './compare'
 import './history.css'
 import {
@@ -10,67 +14,53 @@ import {
   historyEventLabel,
   mergeTimeline,
   versionPreview,
-  type TimelineEntry,
+  type HistoryOrder,
 } from './timeline'
 
-type HistoryPanelProps = {
+type HistoryPageProps = {
   db: TracepadDatabase
   noteId: Uuid
+  /** The old version shown at the top, or null for the note's title. */
+  versionId: Uuid | null
+  layout: BoardLayout
+  onLayout: (layout: BoardLayout) => void
+  onView: (view: BoardView) => void
+  onOpenVersion: (versionId: Uuid) => void
+  onCloseVersion: () => void
+  onBackToNote: () => void
+}
+
+type Loaded = {
   localDeviceId: Uuid
-  onBack: () => void
+  labels: Label[]
+  listed: ListedNote | null
+  versions: NoteVersion[]
+  events: HistoryEvent[]
 }
 
-type View =
-  | { name: 'timeline' }
-  | { name: 'version'; version: NoteVersion }
-  | { name: 'compare'; older: NoteVersion; newer: NoteVersion }
-
-export function HistoryPanel({ db, noteId, localDeviceId, onBack }: HistoryPanelProps) {
-  const [view, setView] = useState<View>({ name: 'timeline' })
-
-  return (
-    <>
-      <div hidden={view.name !== 'timeline'}>
-        <Timeline
-          db={db}
-          noteId={noteId}
-          localDeviceId={localDeviceId}
-          onBack={onBack}
-          onOpen={(version) => setView({ name: 'version', version })}
-          onCompare={(older, newer) => setView({ name: 'compare', older, newer })}
-        />
-      </div>
-      {view.name === 'version' ? (
-        <OldVersion version={view.version} onBack={() => setView({ name: 'timeline' })} />
-      ) : null}
-      {view.name === 'compare' ? (
-        <CompareView older={view.older} newer={view.newer} onBack={() => setView({ name: 'timeline' })} />
-      ) : null}
-    </>
-  )
-}
-
-function Timeline({
+export function HistoryPage({
   db,
   noteId,
-  localDeviceId,
-  onBack,
-  onOpen,
-  onCompare,
-}: HistoryPanelProps & {
-  onOpen: (version: NoteVersion) => void
-  onCompare: (older: NoteVersion, newer: NoteVersion) => void
-}) {
-  const [entries, setEntries] = useState<TimelineEntry[] | null>(null)
+  versionId,
+  layout,
+  onLayout,
+  onView,
+  onOpenVersion,
+  onCloseVersion,
+  onBackToNote,
+}: HistoryPageProps) {
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [failed, setFailed] = useState(false)
-  const [selected, setSelected] = useState<string[]>([])
+  const [order, setOrder] = useState<HistoryOrder>('newest')
+  const [selected, setSelected] = useState<Uuid[]>([])
+  const [comparing, setComparing] = useState<{ older: NoteVersion; newer: NoteVersion } | null>(null)
 
   useEffect(() => {
     let active = true
-    void listNoteHistory(db, noteId)
-      .then((history) => {
+    void Promise.all([ensureDeviceId(db), listLabels(db), getListedNote(db, noteId), listNoteHistory(db, noteId)])
+      .then(([localDeviceId, labels, listed, history]) => {
         if (!active) return
-        setEntries(mergeTimeline(history.versions, history.events))
+        setLoaded({ localDeviceId, labels, listed, versions: history.versions, events: history.events })
       })
       .catch(() => {
         if (active) setFailed(true)
@@ -80,27 +70,28 @@ function Timeline({
     }
   }, [db, noteId])
 
-  if (failed) {
+  const backToNote = (
+    <button type="button" className="history-action history-back" onClick={onBackToNote}>
+      Back to note
+    </button>
+  )
+
+  if (failed || loaded == null) {
     return (
-      <div className="history">
-        <p>Couldn't load history</p>
-        <button type="button" onClick={onBack}>
-          Back to note
-        </button>
-      </div>
-    )
-  }
-  if (entries == null) {
-    return (
-      <div className="history">
-        <p>Loading history</p>
-      </div>
+      <BoardShell labels={[]} view={null} onView={onView}>
+        <div className="history">
+          <p>{failed ? "Couldn't load history" : 'Loading history'}</p>
+          {failed ? backToNote : null}
+        </div>
+      </BoardShell>
     )
   }
 
-  const loaded = entries
+  const { localDeviceId, labels, listed, versions, events } = loaded
+  const entries = mergeTimeline(versions, events, order)
+  const opened = versionId == null ? null : (versions.find((version) => version.id === versionId) ?? null)
 
-  function toggle(id: string) {
+  function toggle(id: Uuid) {
     setSelected((current) => {
       if (current.includes(id)) return current.filter((item) => item !== id)
       if (current.length >= 2) return current
@@ -109,103 +100,105 @@ function Timeline({
   }
 
   function compare() {
-    const versions = loaded
-      .filter(
-        (entry): entry is Extract<TimelineEntry, { kind: 'version' }> =>
-          entry.kind === 'version' && selected.includes(entry.id),
-      )
-      .map((entry) => entry.version)
-    if (versions.length !== 2) return
-    const ordered = orderVersions(versions[0], versions[1])
-    onCompare(ordered.older, ordered.newer)
+    const picked = versions.filter((version) => selected.includes(version.id))
+    if (picked.length !== 2) return
+    setComparing(orderVersions(picked[0], picked[1]))
+  }
+
+  if (comparing) {
+    return (
+      <BoardShell labels={labels} view={null} onView={onView}>
+        <CompareView older={comparing.older} newer={comparing.newer} onBack={() => setComparing(null)} />
+      </BoardShell>
+    )
   }
 
   return (
-    <div className="history">
-      <div className="history-toolbar">
-        <h2>History</h2>
-        <button type="button" onClick={onBack}>
-          Back to note
+    <BoardShell labels={labels} view={null} onView={onView}>
+      {opened ? (
+        <OldVersion version={opened} onBack={onCloseVersion} />
+      ) : (
+        <h2 className="take-note history-title">
+          {cardHeading(listed?.version.title ?? null, listed?.version.body ?? null)}
+        </h2>
+      )}
+      <div className="board-toolbar">
+        {backToNote}
+        <label htmlFor="history-sort">
+          Sort
+          <select
+            id="history-sort"
+            value={order}
+            onChange={(event) => {
+              const value = event.target.value
+              if (value === 'newest' || value === 'oldest') setOrder(value)
+            }}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </label>
+        <LayoutToggle layout={layout} onLayout={onLayout} />
+        <button
+          type="button"
+          className="history-action"
+          disabled={selected.length !== 2}
+          onClick={compare}
+        >
+          Compare
         </button>
       </div>
-      {loaded.length === 0 ? (
-        <p>No history yet</p>
+      {entries.length === 0 || listed == null ? (
+        <p className="empty-state">No history yet</p>
       ) : (
-        <ol aria-label="History" className="history-list">
-          {loaded.map((entry) => (
-            <li key={entry.id} className="history-entry" data-kind={entry.kind}>
-              <span className="history-kind">
-                {entry.kind === 'version' ? 'Version' : historyEventLabel(entry.event.type)}
-              </span>
-              {entry.kind === 'version' ? (
-                <span className="history-preview">{versionPreview(entry.version)}</span>
-              ) : null}
-              <time dateTime={entry.at} className="history-time">
-                {formatHistoryTime(entry.at)}
-              </time>
-              <span className="history-device">{deviceLabel(entry.deviceId, localDeviceId)}</span>
-              {entry.kind === 'version' ? (
-                <VersionActions
-                  preview={versionPreview(entry.version)}
-                  checked={selected.includes(entry.id)}
-                  disabled={!selected.includes(entry.id) && selected.length >= 2}
-                  onOpen={() => onOpen(entry.version)}
-                  onToggle={() => toggle(entry.id)}
-                />
-              ) : null}
-            </li>
-          ))}
-        </ol>
+        <ul className="board-cards history-cards" data-layout={layout} aria-label="History">
+          {entries.map((entry) =>
+            entry.kind === 'version' ? (
+              <NoteCard
+                key={entry.id}
+                card={{ note: listed.note, version: entry.version, daysLeft: null }}
+                onOpen={() => onOpenVersion(entry.id)}
+              >
+                <div className="history-meta">
+                  <time dateTime={entry.at}>{formatHistoryTime(entry.at)}</time>
+                  <span>{deviceLabel(entry.deviceId, localDeviceId)}</span>
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${versionPreview(entry.version)}`}
+                      checked={selected.includes(entry.id)}
+                      disabled={!selected.includes(entry.id) && selected.length >= 2}
+                      onChange={() => toggle(entry.id)}
+                    />{' '}
+                    Select
+                  </label>
+                </div>
+              </NoteCard>
+            ) : (
+              <li key={entry.id} className="history-event">
+                <span className="history-kind">{historyEventLabel(entry.event.type)}</span>
+                <time dateTime={entry.at}>{formatHistoryTime(entry.at)}</time>
+                <span>{deviceLabel(entry.deviceId, localDeviceId)}</span>
+              </li>
+            ),
+          )}
+        </ul>
       )}
-      <button type="button" disabled={selected.length !== 2} onClick={compare}>
-        Compare
-      </button>
-    </div>
-  )
-}
-
-function VersionActions({
-  preview,
-  checked,
-  disabled,
-  onOpen,
-  onToggle,
-}: {
-  preview: string
-  checked: boolean
-  disabled: boolean
-  onOpen: () => void
-  onToggle: () => void
-}) {
-  return (
-    <>
-      <button type="button" aria-label={`Open ${preview}`} onClick={onOpen}>
-        Open
-      </button>
-      <label>
-        <input
-          type="checkbox"
-          aria-label={`Select ${preview}`}
-          checked={checked}
-          disabled={disabled}
-          onChange={onToggle}
-        />{' '}
-        Select
-      </label>
-    </>
+    </BoardShell>
   )
 }
 
 function OldVersion({ version, onBack }: { version: NoteVersion; onBack: () => void }) {
   const { title, body } = versionText(version)
   return (
-    <article className="history history-readonly" aria-label="Old version">
-      <p>Read-only</p>
-      <input aria-label="Title" value={title} readOnly />
-      <textarea aria-label="Body" value={body} readOnly />
-      <button type="button" onClick={onBack}>
-        Back to history
-      </button>
+    <article className="editor history-version" aria-label="Old version">
+      <p className="history-version-title">{title}</p>
+      <p className="history-version-body">{body}</p>
+      <div className="editor-actions">
+        <button type="button" onClick={onBack}>
+          Back to history
+        </button>
+      </div>
     </article>
   )
 }

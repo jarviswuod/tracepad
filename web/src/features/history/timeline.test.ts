@@ -64,6 +64,38 @@ describe('mergeTimeline', () => {
     ])
   })
 
+  it('sorts oldest first when asked, and newest first by default', () => {
+    const versions = [
+      version('v-old', '2026-11-24T10:00:00.000Z', 'alpha'),
+      version('v-new', '2026-11-24T12:00:00.000Z', 'beta'),
+    ]
+    const events = [
+      event('e-mid', '2026-11-24T11:00:00.000Z', 'pinned'),
+      event('e-new', '2026-11-24T13:00:00.000Z', 'archived'),
+    ]
+
+    expect(mergeTimeline(versions, events).map((entry) => entry.id)).toEqual(['e-new', 'v-new', 'e-mid', 'v-old'])
+    expect(mergeTimeline(versions, events, 'newest').map((entry) => entry.id)).toEqual([
+      'e-new',
+      'v-new',
+      'e-mid',
+      'v-old',
+    ])
+    expect(mergeTimeline(versions, events, 'oldest').map((entry) => entry.id)).toEqual([
+      'v-old',
+      'e-mid',
+      'v-new',
+      'e-new',
+    ])
+  })
+
+  it('orders entries that share a time by id, reversed for oldest first', () => {
+    const at = '2026-11-24T10:00:00.000Z'
+    expect(mergeTimeline([version('b', at, 'alpha')], [event('a', at, 'pinned')], 'oldest').map((e) => e.id)).toEqual(
+      ['a', 'b'],
+    )
+  })
+
   it('orders entries that share a time by id descending', () => {
     const at = '2026-11-24T10:00:00.000Z'
     const entries = mergeTimeline([version('b', at, 'alpha')], [event('a', at, 'pinned')])

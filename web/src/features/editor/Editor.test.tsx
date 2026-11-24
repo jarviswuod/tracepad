@@ -5,7 +5,8 @@ import type { NoteVersion } from '../../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
 import { commitNoteText, ensureDeviceId } from '../../data/notes'
 import { DRAFT_DEBOUNCE_MS, PENDING_SYNC_POLL_MS } from './Editor'
-import { NotesHome } from './NotesHome'
+import { MemoryRouter } from 'react-router-dom'
+import { AppRoutes } from '../../app/AppRoutes'
 
 const opened: TracepadDatabase[] = []
 const names: string[] = []
@@ -28,10 +29,10 @@ afterEach(async () => {
 
 async function renderHome(db: TracepadDatabase) {
   render(
-    <>
+    <MemoryRouter>
       <h1>Tracepad</h1>
-      <NotesHome db={db} />
-    </>,
+      <AppRoutes db={db} />
+    </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByRole('button', { name: 'Take a note' })).toBeEnabled())
 }

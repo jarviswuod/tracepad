@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
 import { recoverLeftoverDrafts } from '../data/notes'
-import { NotesHome } from '../features/editor/NotesHome'
+import { AppRoutes } from './AppRoutes'
 
 export function AppShell() {
   const [db, setDb] = useState<TracepadDatabase | null>(null)
@@ -24,7 +24,7 @@ export function AppShell() {
   return (
     <main>
       <h1>Tracepad</h1>
-      {db ? <NotesHome db={db} /> : null}
+      {db ? <AppRoutes db={db} /> : null}
     </main>
   )
 }

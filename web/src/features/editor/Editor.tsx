@@ -4,7 +4,6 @@ import { clearDraft, commitNoteText, saveDraft } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
 import type { NoteVersion, Uuid } from '../../domain/types'
 import { isUnchangedText } from '../../domain/versioning'
-import { HistoryPanel } from '../history/History'
 import { SavingDot, savingDotState } from './SavingDot'
 
 /** Wait this long after the last keystroke, then save a draft. */
@@ -24,6 +23,8 @@ type EditorProps = {
   noteId: Uuid
   openedVersion: NoteVersion | null
   onLeft: () => void
+  /** Called once the note is saved, to show its history page. */
+  onHistory: () => void
   ref?: Ref<EditorHandle>
 }
 
@@ -38,13 +39,12 @@ type EditorText = {
   body: string
 }
 
-export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: EditorProps) {
+export function Editor({ db, deviceId, noteId, openedVersion, onLeft, onHistory, ref }: EditorProps) {
   // Title and body live here. Draft saves and outbox checks never write them back.
   const [title, setTitle] = useState(openedVersion?.title ?? '')
   const [body, setBody] = useState(openedVersion?.body ?? '')
   const [unsaved, setUnsaved] = useState(false)
   const [pendingSync, setPendingSync] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
 
   const textRef = useRef<EditorText>({ title, body })
   textRef.current = { title, body }
@@ -57,6 +57,8 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: Edi
   })
   const onLeftRef = useRef(onLeft)
   onLeftRef.current = onLeft
+  const onHistoryRef = useRef(onHistory)
+  onHistoryRef.current = onHistory
 
   const cardRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -168,6 +170,13 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: Edi
     return closing.current
   }
 
+  function openHistory() {
+    void leave().then(
+      () => onHistoryRef.current(),
+      () => undefined,
+    )
+  }
+
   useImperativeHandle(ref, () => ({ leave }), [leave])
 
   useEffect(() => {
@@ -232,36 +241,25 @@ export function Editor({ db, deviceId, noteId, openedVersion, onLeft, ref }: Edi
 
   return (
     <div className="editor" ref={cardRef} role="group" aria-label="Note">
-      {historyOpen ? (
-        <HistoryPanel
-          db={db}
-          noteId={noteId}
-          localDeviceId={deviceId}
-          onBack={() => setHistoryOpen(false)}
-        />
-      ) : (
-        <>
-          <SavingDot state={savingDotState(unsaved, pendingSync)} />
-          <input
-            aria-label="Title"
-            placeholder="Title"
-            value={title}
-            autoFocus
-            onChange={(event) => changeTitle(event.target.value)}
-          />
-          <textarea
-            aria-label="Body"
-            placeholder="Take a note"
-            value={body}
-            onChange={(event) => changeBody(event.target.value)}
-          />
-          <div className="editor-actions">
-            <button type="button" onClick={() => setHistoryOpen(true)}>
-              History
-            </button>
-          </div>
-        </>
-      )}
+      <SavingDot state={savingDotState(unsaved, pendingSync)} />
+      <input
+        aria-label="Title"
+        placeholder="Title"
+        value={title}
+        autoFocus
+        onChange={(event) => changeTitle(event.target.value)}
+      />
+      <textarea
+        aria-label="Body"
+        placeholder="Take a note"
+        value={body}
+        onChange={(event) => changeBody(event.target.value)}
+      />
+      <div className="editor-actions">
+        <button type="button" onClick={openHistory}>
+          History
+        </button>
+      </div>
     </div>
   )
 }

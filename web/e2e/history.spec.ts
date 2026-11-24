@@ -1,26 +1,35 @@
 import { expect, test, type Page } from '@playwright/test'
 
-async function versionCount(page: Page): Promise<number> {
-  return page.evaluate(async () => {
+async function readStore<T>(page: Page, store: string): Promise<T[]> {
+  return page.evaluate(async (name) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('tracepad')
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
     try {
-      return await new Promise<number>((resolve, reject) => {
-        const tx = db.transaction('noteVersions', 'readonly')
-        const request = tx.objectStore('noteVersions').count()
-        request.onsuccess = () => resolve(request.result)
+      return await new Promise<T[]>((resolve, reject) => {
+        const tx = db.transaction(name, 'readonly')
+        const request = tx.objectStore(name).getAll()
+        request.onsuccess = () => resolve(request.result as T[])
         request.onerror = () => reject(request.error)
       })
     } finally {
       db.close()
     }
-  })
+  }, store)
 }
 
-test('edits twice, opens history, reads an old version, and compares in green and red', async ({ page }) => {
+async function cardLabels(page: Page): Promise<string[]> {
+  return page
+    .getByRole('list', { name: 'History' })
+    .locator('.note-card')
+    .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label') ?? ''))
+}
+
+test('history page: open by address, layout, sort, open a card, back, and compare in green and red', async ({
+  page,
+}) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Take a note' }).click()
   await page.getByLabel('Title').fill('Groceries')
@@ -28,25 +37,48 @@ test('edits twice, opens history, reads an old version, and compares in green an
   await page.keyboard.press('Control+s')
   await page.getByLabel('Body').fill('beta')
   await page.keyboard.press('Control+s')
-  await expect.poll(() => versionCount(page)).toBe(2)
+  await expect.poll(async () => (await readStore(page, 'noteVersions')).length).toBe(2)
+  const [note] = await readStore<{ id: string }>(page, 'notes')
 
-  await page.getByRole('button', { name: 'History' }).click()
-  const items = page.getByRole('list', { name: 'History' }).getByRole('listitem')
-  await expect(items).toHaveCount(2)
-  await expect(items.nth(0)).toContainText('beta')
-  await expect(items.nth(1)).toContainText('alpha')
-  await expect(items.nth(0).locator('time')).toBeVisible()
-  await expect(items.nth(0)).toContainText('This device')
-  await expect(items.nth(1)).toContainText('This device')
+  await page.goto(`/history/${note.id}`)
+  const list = page.getByRole('list', { name: 'History' })
+  await expect(list.locator('.note-card')).toHaveCount(2)
+  await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible()
+  await expect(page.locator('.take-note')).toHaveText('Groceries')
+  await expect(page.getByRole('button', { name: 'Take a note' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Open/ })).toHaveCount(0)
+  await expect(page.getByText(/Read-only/i)).toHaveCount(0)
+  await expect(list.getByRole('listitem').nth(0)).toContainText('This device')
+  await expect(list.locator('time').first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Open Groceries: alpha' }).click()
+  await expect(list).toHaveAttribute('data-layout', 'grid')
+  await page.getByRole('button', { name: 'List', exact: true }).click()
+  await expect(list).toHaveAttribute('data-layout', 'list')
+  await page.getByRole('button', { name: 'Grid', exact: true }).click()
+  await expect(list).toHaveAttribute('data-layout', 'grid')
+
+  await expect(page.getByLabel('Sort')).toHaveValue('newest')
+  await expect.poll(() => cardLabels(page)).toEqual(['Groceries, beta', 'Groceries, alpha'])
+  await page.getByLabel('Sort').selectOption('oldest')
+  await expect.poll(() => cardLabels(page)).toEqual(['Groceries, alpha', 'Groceries, beta'])
+  await page.getByLabel('Sort').selectOption('newest')
+
+  const alpha = (await readStore<{ id: string; body: string }>(page, 'noteVersions')).find(
+    (version) => version.body === 'alpha',
+  )!
+  await list.getByRole('button', { name: 'Groceries, alpha' }).click()
+  await expect(page).toHaveURL(`/history/${note.id}/${alpha.id}`)
   const old = page.getByRole('article', { name: 'Old version' })
-  await expect(old.getByLabel('Title')).toHaveValue('Groceries')
-  await expect(old.getByLabel('Body')).toHaveValue('alpha')
-  await expect(old.getByLabel('Title')).not.toBeEditable()
-  await expect(old.getByLabel('Body')).not.toBeEditable()
+  await expect(old).toContainText('Groceries')
+  await expect(old).toContainText('alpha')
+  await expect(old.getByRole('textbox')).toHaveCount(0)
+  await expect(old).not.toContainText(/Read-only/i)
 
-  await page.getByRole('button', { name: 'Back to history' }).click()
+  await page.goBack()
+  await expect(page).toHaveURL(`/history/${note.id}`)
+  await expect(old).toHaveCount(0)
+  await expect(page.locator('.take-note')).toHaveText('Groceries')
+
   await page.getByRole('checkbox', { name: 'Select Groceries: beta' }).check()
   await page.getByRole('checkbox', { name: 'Select Groceries: alpha' }).check()
   await page.getByRole('button', { name: 'Compare' }).click()
@@ -68,4 +100,25 @@ test('edits twice, opens history, reads an old version, and compares in green an
   await expect(added).toHaveCSS('color', 'rgb(11, 128, 67)')
   await expect(older.locator('.diff-added')).toHaveCount(0)
   await expect(newer.locator('.diff-removed')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Back to history' }).click()
+  await page.getByRole('button', { name: 'Back to note' }).click()
+  await expect(page).toHaveURL('/')
+  await expect(page.getByLabel('Body')).toHaveValue('beta')
+})
+
+test('the History button opens the page, and browser back returns to the board', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Take a note' }).click()
+  await page.getByLabel('Title').fill('Errands')
+  await page.getByLabel('Body').fill('post office')
+  await page.getByRole('button', { name: 'History' }).click()
+
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('list', { name: 'History' }).locator('.note-card')).toHaveCount(1)
+  await expect(page.locator('.take-note')).toHaveText('Errands')
+
+  await page.goBack()
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('button', { name: 'Errands, post office', exact: true })).toBeVisible()
 })
