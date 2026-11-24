@@ -52,6 +52,40 @@ test('trashes a note, undoes it, restores pin and color, and asks before deletin
   await expect.poll(async () => (await readStore(page, 'noteVersions')).length).toBe(0)
 })
 
+test('restores a trashed note from its modal with pin and color kept', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto('/')
+  await createNote(page, 'Alpha', 'Apples')
+  await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  await dialog.getByRole('button', { name: 'Pin', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Yellow color', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Move to trash', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible()
+
+  const nav = page.getByRole('navigation', { name: 'Views' })
+  await nav.getByRole('button', { name: 'Trash', exact: true }).click()
+  await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
+  const trashed = page.getByRole('dialog', { name: 'Note' })
+  await expect(trashed.getByRole('button', { name: 'Restore', exact: true })).toBeVisible()
+  await expect(trashed.getByRole('button', { name: 'Move to trash', exact: true })).toHaveCount(0)
+  await trashed.getByRole('button', { name: 'Restore', exact: true }).click()
+  await expect(trashed).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Alpha, Apples', exact: true })).toHaveCount(0)
+
+  await nav.getByRole('button', { name: 'Notes', exact: true }).click()
+  const card = page.getByRole('button', { name: 'Alpha, Apples', exact: true })
+  await expect(card).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible()
+  await expect(card).toHaveCSS('background-color', 'rgb(255, 244, 117)')
+
+  await card.click()
+  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.getByRole('list', { name: 'History' }).getByText('Restored', { exact: true })).toBeVisible()
+})
+
 test('asks before emptying the trash', async ({ page }) => {
   test.setTimeout(90_000)
   await page.goto('/')

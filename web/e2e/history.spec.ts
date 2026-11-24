@@ -107,6 +107,27 @@ test('history page: open by address, layout, sort, open a card, back, and compar
   await expect(page.getByLabel('Body')).toHaveValue('beta')
 })
 
+test('a refresh after Back to note shows the board without opening the note', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Take a note' }).click()
+  await page.getByLabel('Title').fill('Errands')
+  await page.getByLabel('Body').fill('post office')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]{36}$/)
+
+  await page.getByRole('button', { name: 'Back to note' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  await expect(dialog.getByLabel('Body')).toHaveValue('post office')
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => window.history.state?.usr ?? null)).toBeNull()
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Take a note' })).toBeEnabled()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Errands, post office', exact: true })).toBeVisible()
+})
+
 test('the History button opens the page, and browser back returns to the board', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Take a note' }).click()

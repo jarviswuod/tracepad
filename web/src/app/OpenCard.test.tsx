@@ -200,6 +200,46 @@ describe('opening a card', () => {
     expect(screen.getByRole('button', { name: 'Gone, Soon' })).toBeInTheDocument()
   })
 
+  it('keeps Move to trash on an active note', async () => {
+    const db = await open()
+    await store(db, note(noteId), 'Shopping', 'Milk')
+    await renderAt(db)
+
+    const { dialog } = await openCard('Shopping, Milk')
+    expect(within(dialog).getByRole('button', { name: 'Move to trash' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'History' })).toBeInTheDocument()
+  })
+
+  it('restores an open trashed note, clears a matching undo, and keeps pin and color', async () => {
+    const db = await open()
+    await store(db, note(noteId, { isPinned: true, color: '#fff475' }), 'Shopping', 'Milk')
+    await renderAt(db)
+
+    const { dialog } = await openCard('Shopping, Milk')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move to trash' }))
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trash' }))
+    const opened = await openCard('Shopping, Milk')
+    expect(within(opened.dialog).queryByRole('button', { name: 'Move to trash' })).not.toBeInTheDocument()
+    fireEvent.click(within(opened.dialog).getByRole('button', { name: 'Restore' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    expect(await db.get('notes', noteId)).toMatchObject({
+      trashedAt: null,
+      isPinned: true,
+      color: '#fff475',
+    })
+    expect((await db.getAll('historyEvents')).map((event) => event.type).sort()).toEqual(['restored', 'trashed'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }))
+    const card = await screen.findByRole('button', { name: 'Shopping, Milk' })
+    expect(screen.getByRole('heading', { name: 'Pinned' })).toBeInTheDocument()
+    expect(card).toHaveAttribute('data-color', '#fff475')
+  })
+
   it('opens a history version in the modal and closes it with Esc', async () => {
     const db = await open()
     await store(db, note(noteId, { color: '#ccff90' }), 'Shopping', 'Milk')

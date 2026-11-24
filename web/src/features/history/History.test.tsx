@@ -1,6 +1,7 @@
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { deleteDB } from 'idb'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Router, UNSAFE_createMemoryHistory } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppRoutes } from '../../app/AppRoutes'
 import type { HistoryEvent, Label, Note, NoteVersion } from '../../domain/types'
@@ -102,6 +103,25 @@ function renderAt(db: TracepadDatabase, path: string) {
       <h1>Tracepad</h1>
       <AppRoutes db={db} />
     </MemoryRouter>,
+  )
+}
+
+type MemoryHistory = ReturnType<typeof UNSAFE_createMemoryHistory>
+
+/** Keeps one memory history alive so a remount behaves like a browser refresh. */
+function HistoryHarness({ history, children }: { history: MemoryHistory; children: ReactNode }) {
+  const [state, setState] = useState({ action: history.action, location: history.location })
+  useLayoutEffect(
+    () =>
+      history.listen((update) => {
+        setState({ action: update.action, location: update.location })
+      }),
+    [history],
+  )
+  return (
+    <Router location={state.location} navigationType={state.action} navigator={history}>
+      {children}
+    </Router>
   )
 }
 
@@ -284,6 +304,54 @@ describe('history page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to note' }))
     expect(await screen.findByLabelText('Title')).toHaveValue('Groceries')
+    expect(screen.getByLabelText('Body')).toHaveValue('beta')
+  })
+
+  it('opens the note from "Back to note" once, and a reload of that history entry does not', async () => {
+    const db = await seed()
+    const history = UNSAFE_createMemoryHistory({
+      initialEntries: [`/history/${noteId}`],
+      v5Compat: true,
+    })
+    function mount() {
+      return render(
+        <StrictMode>
+          <HistoryHarness history={history}>
+            <h1>Tracepad</h1>
+            <AppRoutes db={db} />
+          </HistoryHarness>
+        </StrictMode>,
+      )
+    }
+
+    const first = mount()
+    await historyList()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to note' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Note' })
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Groceries')
+    expect(within(dialog).getByLabelText('Body')).toHaveValue('beta')
+    // The browser keeps this entry across a refresh. Once the board has used it, the state must be gone.
+    await waitFor(() => expect(history.location.state).toBeNull())
+    expect(history.location.pathname).toBe('/')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    first.unmount()
+    mount()
+    await waitFor(() => {
+      expect({
+        open: screen.queryByRole('dialog', { name: 'Note' }) != null,
+        state: history.location.state,
+      }).toEqual({ open: false, state: null })
+    })
+    expect(await screen.findByRole('button', { name: 'Groceries, beta' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Groceries, beta' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+    await historyList()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to note' }))
+    expect(await screen.findByRole('dialog', { name: 'Note' })).toBeInTheDocument()
     expect(screen.getByLabelText('Body')).toHaveValue('beta')
   })
 })

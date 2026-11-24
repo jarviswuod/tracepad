@@ -38,6 +38,7 @@ type Session = {
   color: string | null
   isPinned: boolean
   isArchived: boolean
+  isTrashed: boolean
 }
 
 type NotesHomeProps = {
@@ -132,6 +133,7 @@ export function NotesHome({
             color: listed.note.color,
             isPinned: listed.note.isPinned,
             isArchived: listed.note.isArchived,
+            isTrashed: listed.note.trashedAt != null,
           }
         : null,
     )
@@ -152,6 +154,7 @@ export function NotesHome({
       color: null,
       isPinned: false,
       isArchived: false,
+      isTrashed: false,
     })
   }
 
@@ -264,6 +267,13 @@ export function NotesHome({
     await refresh()
   }
 
+  async function restoreOpenNote() {
+    const noteId = session?.noteId
+    if (noteId == null) return
+    await restore(noteId)
+    await editorRef.current?.close()
+  }
+
   async function confirmPending() {
     const action = pendingDelete
     if (!action) return
@@ -289,6 +299,8 @@ export function NotesHome({
         openedVersion={session.version}
         onHistory={() => onHistory(session.noteId)}
         onTrash={() => void trashSession()}
+        trashed={session.isTrashed}
+        onRestore={() => void restoreOpenNote()}
         actions={
           session.version ? (
             <NoteMeta

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { TracepadDatabase } from '../data/db'
 import type { BoardSort, BoardView } from '../data/notes'
@@ -46,6 +46,18 @@ function BoardRoute({ db, settings }: { db: TracepadDatabase; settings: BoardSet
   const navigate = useNavigate()
   const location = useLocation()
   const openNoteId = (location.state as BoardLocationState)?.openNoteId ?? null
+
+  useEffect(() => {
+    if (openNoteId == null) return
+    // A refresh keeps this history state, and the board's arrival ref starts over,
+    // so the note would open again. Replace the entry once the id has been used.
+    // The timer lets strict mode finish replaying the effect before the entry changes.
+    const path = `${location.pathname}${location.search}${location.hash}`
+    const timer = window.setTimeout(() => {
+      navigate(path, { replace: true, state: null })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [openNoteId, location.pathname, location.search, location.hash, navigate])
 
   return (
     <NotesHome

@@ -29,6 +29,10 @@ type EditorProps = {
   onHistory: () => void
   /** Save or discard, then let the screen move the note to the trash. */
   onTrash: () => void
+  /** The note is in the trash, so "Restore" takes the place of "Move to trash". */
+  trashed?: boolean
+  /** Let the screen restore the note, then close it. */
+  onRestore?: () => void
   /** Pin, archive, color and labels. Omitted until the note has a row. */
   actions?: ReactNode
   ref?: Ref<EditorHandle>
@@ -53,6 +57,8 @@ export function Editor({
   onLeft,
   onHistory,
   onTrash,
+  trashed = false,
+  onRestore,
   actions,
   ref,
 }: EditorProps) {
@@ -77,6 +83,8 @@ export function Editor({
   onHistoryRef.current = onHistory
   const onTrashRef = useRef(onTrash)
   onTrashRef.current = onTrash
+  const onRestoreRef = useRef(onRestore)
+  onRestoreRef.current = onRestore
 
   const cardRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -276,9 +284,15 @@ export function Editor({
       />
       {actions}
       <div className="editor-actions">
-        <button type="button" onClick={() => void onTrashRef.current()}>
-          Move to trash
-        </button>
+        {trashed ? (
+          <button type="button" onClick={() => void onRestoreRef.current?.()}>
+            Restore
+          </button>
+        ) : (
+          <button type="button" onClick={() => void onTrashRef.current()}>
+            Move to trash
+          </button>
+        )}
         <button type="button" onClick={openHistory}>
           History
         </button>
