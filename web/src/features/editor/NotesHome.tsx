@@ -20,8 +20,10 @@ import {
   setPinned,
   type BoardCard,
   type BoardSort,
+  type BoardView,
 } from '../../data/notes'
 import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '../../data/trash'
+import type { SearchOptions } from '../../domain/search'
 import type { Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
@@ -34,6 +36,13 @@ import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
 type PendingDelete = { kind: 'note'; noteId: Uuid } | { kind: 'all' }
+
+function searchOptionsFor(view: BoardView, query: string, includeArchived: boolean): SearchOptions {
+  if (view.kind === 'archive') return { query, includeArchived, labelId: null, page: 'archive' }
+  if (view.kind === 'trash') return { query, includeArchived, labelId: null, page: 'trash' }
+  if (view.kind === 'label') return { query, includeArchived, labelId: view.labelId, page: 'label' }
+  return { query, includeArchived, labelId: null, page: 'home' }
+}
 
 type Session = {
   noteId: Uuid
@@ -322,13 +331,12 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   }
 
   const searching = searchQuery.trim() !== ''
-  const shownCards = searching
-    ? searchBoardCards(sources, {
-        query: searchQuery,
-        includeArchived,
-        labelId: view.kind === 'label' ? view.labelId : null,
-      })
-    : cards
+  // Reminders already lists its notes, including archived ones. Search those.
+  const shownCards = !searching
+    ? cards
+    : view.kind === 'reminders'
+      ? searchBoardCards(cards, { query: searchQuery, includeArchived: true, labelId: null })
+      : searchBoardCards(sources, searchOptionsFor(view, searchQuery, includeArchived))
 
   const editor =
     session && deviceId ? (
@@ -363,6 +371,12 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
       />
     ) : null
   const opened = session?.version != null ? session : null
+  const showArchivedBar =
+    searching &&
+    includeArchived &&
+    opened != null &&
+    opened.isArchived &&
+    (view.kind === 'notes' || view.kind === 'label')
 
   return (
     <>
@@ -392,6 +406,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
         <NoteModal
           label="Note"
           color={opened.color}
+          archivedBar={showArchivedBar}
           onClose={() => void editorRef.current?.close()}
           returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
           toolbar={

@@ -87,7 +87,7 @@ export function NoteCard({
     <li style={open ? { visibility: 'hidden' } : undefined}>
       <button
         type="button"
-        className="note-card"
+        className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
         data-note-id={card.note.id}
         data-pinned={card.note.isPinned ? 'true' : 'false'}
         data-color={card.note.color ?? 'default'}
@@ -95,6 +95,7 @@ export function NoteCard({
         style={{ backgroundColor: card.note.color ?? '#ffffff' }}
         onClick={onOpen}
       >
+        {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
         {title ? <span className="note-title">{title}</span> : null}
         {preview ? <span className={title ? 'note-preview' : 'note-title'}>{preview}</span> : null}
         {!title && !preview ? <span className="note-title">{UNTITLED}</span> : null}
@@ -130,14 +131,14 @@ export function BoardShell({
   children: ReactNode
 }) {
   const navigate = useNavigate()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   const view = viewFromPath(pathname, labels)
   const currentLabelId =
     view?.kind === 'label' ? (labels.find((label) => label.id === view.labelId)?.id ?? null) : null
 
   function openPath(path: string) {
     if (pathsMatch(pathname, path)) return
-    navigate(`${path}${search}`)
+    navigate(path)
   }
 
   function openLabel(labelId: Uuid) {
@@ -234,6 +235,8 @@ export function Board({
   // Trash keeps the pin flag but does not show it. Search is not the trash list.
   const inTrash = view.kind === 'trash' && !searching
   const showGroups = !inTrash && pinned.length > 0
+  // Home and a label bring archived notes in only while the switch is on.
+  const markArchived = searching && (view.kind === 'notes' || view.kind === 'label')
 
   function renderCard(card: BoardCard) {
     const heading = cardLabel(card.version.title, displayedBody(card.version))
@@ -242,7 +245,7 @@ export function Board({
         key={card.note.id}
         card={card}
         open={card.note.id === openNoteId}
-        markArchived={searching}
+        markArchived={markArchived}
         onOpen={() => onOpen(card.note.id)}
       >
         {inTrash && card.daysLeft != null ? (

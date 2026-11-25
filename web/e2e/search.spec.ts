@@ -38,6 +38,14 @@ test('searches notes, includes archived notes from the switch, and stays inside 
   await expect(page.getByRole('button', { name: 'Orchard, Apples', exact: true })).toHaveCount(0)
 
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(page).toHaveURL('/label/Home')
+  await expect(search).toHaveValue('')
+  await expect(page.getByRole('switch', { name: 'Include archived' })).not.toBeChecked()
+  await expect(page.getByRole('button', { name: 'Kitchen, Berries', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Orchard, Apples', exact: true })).toHaveCount(0)
+
+  await search.fill('pencils')
   await expect(page.locator('.empty-state')).toHaveText('No notes match')
   await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
 
@@ -71,6 +79,14 @@ test('keeps the search in the page URL across reload, a label, and history', asy
   await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
 
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Work', exact: true }).click()
+  await expect(page).toHaveURL('/label/Work')
+  await expect(search).toHaveValue('')
+  await expect(page.getByRole('switch', { name: 'Include archived' })).not.toBeChecked()
+  await expect(page.getByRole('button', { name: 'Kitchen, Berries', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Orchard, Apples', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
+
+  await search.fill('berries')
   await expect(page).toHaveURL('/label/Work?text=berries')
   await expect(page.getByRole('button', { name: 'Kitchen, Berries', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
@@ -112,6 +128,64 @@ test('keeps the search in the page URL across reload, a label, and history', asy
   await expect(page.getByRole('button', { name: 'Kitchen, Berries', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Desk, Pencils', exact: true })).toHaveCount(0)
 })
+
+test('clears search on Archive, then searches archived notes, and marks them on Home', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/home')
+  await createNote(page, 'Orchard', 'Apples')
+  await createNote(page, 'Kitchen', 'Apples')
+  await archiveNote(page, 'Orchard, Apples')
+
+  const search = page.getByRole('searchbox', { name: 'Search' })
+  await search.fill('apples')
+  await expect(page).toHaveURL('/home?text=apples')
+  await expect(page.getByRole('button', { name: 'Kitchen, Apples', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Orchard, Apples', exact: true })).toHaveCount(0)
+
+  await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Archive', exact: true }).click()
+  await expect(page).toHaveURL('/archive')
+  await expect(search).toHaveValue('')
+  await expect(page.getByRole('switch', { name: 'Include archived' })).not.toBeChecked()
+
+  await search.fill('apples')
+  await expect(page).toHaveURL('/archive?text=apples')
+  const onArchive = page.getByRole('button', { name: 'Orchard, Apples', exact: true })
+  await expect(onArchive).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Kitchen, Apples', exact: true })).toHaveCount(0)
+  await expect(onArchive.locator('.note-archived-bar')).toHaveCount(0)
+
+  await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: 'Notes', exact: true }).click()
+  await expect(page).toHaveURL('/home')
+  await expect(search).toHaveValue('')
+
+  await search.fill('apples')
+  await page.getByRole('switch', { name: 'Include archived' }).click()
+  const archived = page.getByRole('button', { name: 'Orchard, Apples', exact: true })
+  await expect(archived).toBeVisible()
+  await expect(archived).toContainText('Archived')
+  await expect(page.getByRole('button', { name: 'Kitchen, Apples', exact: true }).locator('.note-archived-bar')).toHaveCount(0)
+  await expectBarAcross(archived)
+
+  await page.getByRole('button', { name: 'List', exact: true }).click()
+  await expectBarAcross(archived)
+
+  await archived.click()
+  await expectBarAcross(page.getByRole('dialog', { name: 'Note' }))
+})
+
+async function expectBarAcross(parent: Locator) {
+  const bar = parent.locator('.note-archived-bar')
+  await expect(bar).toBeVisible()
+  const box = await parent.boundingBox()
+  const barBox = await bar.boundingBox()
+  expect(box).not.toBeNull()
+  expect(barBox).not.toBeNull()
+  expect(Math.abs(barBox!.width - box!.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(barBox!.x - box!.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(barBox!.y - box!.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(barBox!.height - 3)).toBeLessThanOrEqual(1)
+  await expect(bar).toHaveCSS('background-color', 'rgb(26, 115, 232)')
+}
 
 async function labelNote(page: Page, card: string, name: string) {
   await page.getByRole('button', { name: card, exact: true }).click()

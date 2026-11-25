@@ -195,6 +195,24 @@
   cursor: pointer;
 }
 
+/* The bar sits on the outer edge. The card's border is 1px outside the padding edge. */
+.note-card-marked {
+  position: relative;
+  overflow: hidden;
+}
+
+.note-card-marked > .note-archived-bar {
+  position: absolute;
+  display: block;
+  top: -1px;
+  right: -1px;
+  left: -1px;
+  height: 3px;
+  margin: 0;
+  background: #1a73e8;
+  pointer-events: none;
+}
+
 .board-cards[data-layout='list'] .note-card {
   min-height: 0;
 }

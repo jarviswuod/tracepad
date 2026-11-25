@@ -25,6 +25,16 @@
   outline: none;
 }
 
+.note-modal > .note-archived-bar {
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  height: 3px;
+  margin: 0;
+  background: #1a73e8;
+}
+
 .note-modal-body {
   flex: 1 1 auto;
   min-height: 0;

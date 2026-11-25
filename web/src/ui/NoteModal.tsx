@@ -25,6 +25,8 @@ type NoteModalProps = {
   size?: 'note' | 'labels'
   /** Buttons on the left of the bottom bar. Close stays on the right. */
   toolbar?: ReactNode
+  /** Blue bar across the top when search included this archived note. */
+  archivedBar?: boolean
   children: ReactNode
 }
 
@@ -62,6 +64,7 @@ export function NoteModal({
   closeText = 'Close',
   size = 'note',
   toolbar,
+  archivedBar = false,
   children,
 }: NoteModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -141,6 +144,7 @@ export function NoteModal({
         tabIndex={-1}
         style={{ backgroundColor: color ?? '#ffffff' }}
       >
+        {archivedBar ? <span className="note-archived-bar" /> : null}
         <div className="note-modal-body">{children}</div>
         <div className="note-modal-actions">
           {toolbar}
