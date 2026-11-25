@@ -1,7 +1,8 @@
 import type { IDBPTransaction } from 'idb'
-import type { HistoryEvent, IsoTimestamp, Note, OutboxRow, Uuid } from '../domain/types'
+import type { HistoryEvent, IsoTimestamp, Note, Uuid } from '../domain/types'
 import { isTrashExpired } from '../domain/trash'
 import type { TracepadDB, TracepadDatabase } from './db'
+import { queueOutbox } from './outbox'
 import { remindersChanged } from './reminders'
 
 type RemovalTx = IDBPTransaction<
@@ -36,28 +37,6 @@ async function finishTransaction(writing: Promise<void>, done: Promise<void>): P
   } catch (error) {
     await settled
     throw error
-  }
-}
-
-function pendingRow(
-  entityType: OutboxRow['entityType'],
-  entityId: Uuid,
-  op: OutboxRow['op'],
-  payload: unknown,
-  createdAt: IsoTimestamp,
-  userId: Uuid | null,
-): OutboxRow {
-  return {
-    id: crypto.randomUUID(),
-    userId,
-    entityType,
-    entityId,
-    op,
-    payload,
-    createdAt,
-    status: 'pending',
-    attempts: 0,
-    lastError: null,
   }
 }
 
@@ -99,7 +78,14 @@ export async function moveToTrash(
     const note: Note = { ...existing, trashedAt: now }
     await tx.objectStore('notes').put(note)
     await tx.objectStore('historyEvents').put(event(note.id, input.deviceId, 'trashed', now))
-    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note',
+      entityId: note.id,
+      op: 'update',
+      payload: note,
+      createdAt: now,
+      userId: note.userId,
+    })
     moved = true
   })()
   await finishTransaction(writing, tx.done)
@@ -124,7 +110,14 @@ export async function restoreFromTrash(
     const note: Note = { ...existing, trashedAt: null }
     await tx.objectStore('notes').put(note)
     await tx.objectStore('historyEvents').put(event(note.id, input.deviceId, 'restored', now))
-    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note',
+      entityId: note.id,
+      op: 'update',
+      payload: note,
+      createdAt: now,
+      userId: note.userId,
+    })
     restored = true
   })()
   await finishTransaction(writing, tx.done)
@@ -225,5 +218,12 @@ async function removeNote(tx: RemovalTx, note: Note, now: IsoTimestamp): Promise
 
   await tx.objectStore('reminders').delete(noteId)
   await tx.objectStore('notes').delete(noteId)
-  await tx.objectStore('outbox').put(pendingRow('note', noteId, 'purge', { id: noteId }, now, note.userId))
+  await queueOutbox(tx.objectStore('outbox'), {
+    entityType: 'note',
+    entityId: noteId,
+    op: 'purge',
+    payload: { id: noteId },
+    createdAt: now,
+    userId: note.userId,
+  })
 }

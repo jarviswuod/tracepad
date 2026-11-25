@@ -1,4 +1,4 @@
-import type { HistoryEvent, IsoTimestamp, OutboxRow, Reminder, Uuid } from '../domain/types'
+import type { HistoryEvent, IsoTimestamp, Reminder, Uuid } from '../domain/types'
 import {
   refusalForFireAt,
   reminderHasFired,
@@ -8,6 +8,7 @@ import {
   PAST_TIME_MESSAGE,
 } from '../domain/reminders'
 import type { TracepadDatabase } from './db'
+import { queueOutbox } from './outbox'
 
 const listeners = new Set<() => void>()
 
@@ -51,27 +52,6 @@ async function finishTransaction(writing: Promise<void>, done: Promise<void>): P
   } catch (error) {
     await settled
     throw error
-  }
-}
-
-function pendingRow(
-  entityId: Uuid,
-  op: OutboxRow['op'],
-  payload: unknown,
-  createdAt: IsoTimestamp,
-  userId: Uuid | null,
-): OutboxRow {
-  return {
-    id: crypto.randomUUID(),
-    userId,
-    entityType: 'reminder',
-    entityId,
-    op,
-    payload,
-    createdAt,
-    status: 'pending',
-    attempts: 0,
-    lastError: null,
   }
 }
 
@@ -160,9 +140,14 @@ export async function setReminder(
     await tx.objectStore('historyEvents').put(
       historyEvent(note.id, input.deviceId, existing ? 'reminder_changed' : 'reminder_set', input.fireAt, now),
     )
-    await tx.objectStore('outbox').put(
-      pendingRow(note.id, existing ? 'update' : 'create', reminder, now, note.userId),
-    )
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'reminder',
+      entityId: note.id,
+      op: existing ? 'update' : 'create',
+      payload: reminder,
+      createdAt: now,
+      userId: note.userId,
+    })
     changed = true
     result = { ok: true, changed: true }
   })()
@@ -190,7 +175,14 @@ export async function removeReminder(
     await tx.objectStore('historyEvents').put(
       historyEvent(note.id, input.deviceId, 'reminder_removed', existing.fireAt, now),
     )
-    await tx.objectStore('outbox').put(pendingRow(note.id, 'delete', { noteId: note.id }, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'reminder',
+      entityId: note.id,
+      op: 'delete',
+      payload: { noteId: note.id },
+      createdAt: now,
+      userId: note.userId,
+    })
     removed = true
   })()
   await finishTransaction(writing, tx.done)
@@ -215,7 +207,14 @@ export async function markReminderFired(
     if (!existing || !sameInstant(existing.fireAt, input.fireAt) || reminderHasFired(existing)) return
     const reminder: Reminder = { ...existing, lastFiredAt: now, updatedAt: now }
     await tx.objectStore('reminders').put(reminder)
-    await tx.objectStore('outbox').put(pendingRow(reminder.noteId, 'update', reminder, now, reminder.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'reminder',
+      entityId: reminder.noteId,
+      op: 'update',
+      payload: reminder,
+      createdAt: now,
+      userId: reminder.userId,
+    })
     marked = true
   })()
   await finishTransaction(writing, tx.done)

@@ -19,9 +19,9 @@ import type {
   NoteKind,
   NoteLabel,
   NoteVersion,
-  OutboxRow,
   Uuid,
 } from '../domain/types'
+import { queueOutbox } from './outbox'
 import { purgeExpiredTrash } from './trash'
 
 export type ListedNote = {
@@ -53,28 +53,6 @@ async function finishTransaction(writing: Promise<void>, done: Promise<void>): P
   } catch (error) {
     await settled
     throw error
-  }
-}
-
-function pendingRow(
-  entityType: OutboxRow['entityType'],
-  entityId: Uuid,
-  op: OutboxRow['op'],
-  payload: unknown,
-  createdAt: IsoTimestamp,
-  userId: Uuid | null,
-): OutboxRow {
-  return {
-    id: crypto.randomUUID(),
-    userId,
-    entityType,
-    entityId,
-    op,
-    payload,
-    createdAt,
-    status: 'pending',
-    attempts: 0,
-    lastError: null,
   }
 }
 
@@ -359,9 +337,14 @@ export async function saveDraft(db: TracepadDatabase, input: SaveDraftInput): Pr
       updatedAt: nowStamp(input.now),
     }
     await drafts.put(draft)
-    await outbox.put(
-      pendingRow('draft', input.noteId, existing ? 'update' : 'create', draft, draft.updatedAt, null),
-    )
+    await queueOutbox(outbox, {
+      entityType: 'draft',
+      entityId: input.noteId,
+      op: existing ? 'update' : 'create',
+      payload: draft,
+      createdAt: draft.updatedAt,
+      userId: null,
+    })
   })()
   await finishTransaction(writing, tx.done)
 }
@@ -380,16 +363,14 @@ export async function clearDraft(
     const existing = await drafts.get([noteId, deviceId])
     if (!existing) return
     await drafts.delete([noteId, deviceId])
-    await outbox.put(
-      pendingRow(
-        'draft',
-        noteId,
-        'delete',
-        { noteId, deviceId },
-        nowStamp(now),
-        null,
-      ),
-    )
+    await queueOutbox(outbox, {
+      entityType: 'draft',
+      entityId: noteId,
+      op: 'delete',
+      payload: { noteId, deviceId },
+      createdAt: nowStamp(now),
+      userId: null,
+    })
   })()
   await finishTransaction(writing, tx.done)
 }
@@ -614,7 +595,14 @@ async function cutVersion(
     await versions.put(version)
     await notes.put(note)
     await drafts.delete([input.noteId, input.deviceId])
-    await outbox.put(pendingRow('version', version.id, 'create', version, input.now, note.userId))
+    await queueOutbox(outbox, {
+      entityType: 'version',
+      entityId: version.id,
+      op: 'create',
+      payload: version,
+      createdAt: input.now,
+      userId: note.userId,
+    })
   })()
 
   await finishTransaction(writing, tx.done)
@@ -663,7 +651,14 @@ async function setNoteFlag(
     if (!note) return
     await tx.objectStore('notes').put(note)
     await tx.objectStore('historyEvents').put(historyEvent(note.id, input.deviceId, input.type, now))
-    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note',
+      entityId: note.id,
+      op: 'update',
+      payload: note,
+      createdAt: now,
+      userId: note.userId,
+    })
     changed = true
   })()
   await finishTransaction(writing, tx.done)
@@ -714,7 +709,14 @@ export async function setNoteColor(
     if (!existing || existing.color === input.color) return
     const note: Note = { ...existing, color: input.color }
     await tx.objectStore('notes').put(note)
-    await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note',
+      entityId: note.id,
+      op: 'update',
+      payload: note,
+      createdAt: now,
+      userId: note.userId,
+    })
     changed = true
   })()
   await finishTransaction(writing, tx.done)
@@ -766,9 +768,14 @@ export async function setChecklistTick(
     }
     await tx.objectStore('checklistTicks').put(tick)
     await tx.objectStore('historyEvents').put(event)
-    await tx.objectStore('outbox').put(
-      pendingRow('tick', note.id, existing ? 'update' : 'create', tick, now, note.userId),
-    )
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'tick',
+      entityId: note.id,
+      op: existing ? 'update' : 'create',
+      payload: tick,
+      createdAt: now,
+      userId: note.userId,
+    })
     changed = true
   })()
   await finishTransaction(writing, tx.done)

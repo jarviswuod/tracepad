@@ -1,5 +1,6 @@
-import type { HistoryEvent, IsoTimestamp, Label, NoteLabel, OutboxRow, Uuid } from '../domain/types'
+import type { HistoryEvent, IsoTimestamp, Label, NoteLabel, Uuid } from '../domain/types'
 import type { TracepadDatabase } from './db'
+import { queueOutbox } from './outbox'
 
 /** Case-insensitive, digits before letters, numbers in natural order ("1. 9" before "1. 10"). */
 const labelNameOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
@@ -38,28 +39,6 @@ async function finishTransaction(writing: Promise<void>, done: Promise<void>): P
   } catch (error) {
     await settled
     throw error
-  }
-}
-
-function pendingRow(
-  entityType: OutboxRow['entityType'],
-  entityId: Uuid,
-  op: OutboxRow['op'],
-  payload: unknown,
-  createdAt: IsoTimestamp,
-  userId: Uuid | null,
-): OutboxRow {
-  return {
-    id: crypto.randomUUID(),
-    userId,
-    entityType,
-    entityId,
-    op,
-    payload,
-    createdAt,
-    status: 'pending',
-    attempts: 0,
-    lastError: null,
   }
 }
 
@@ -112,7 +91,14 @@ export async function createLabel(
     if (nameTaken(existing, userId, name)) return
     const label: Label = { id: crypto.randomUUID(), userId, name, updatedAt: now }
     await labels.put(label)
-    await tx.objectStore('outbox').put(pendingRow('label', label.id, 'create', label, now, userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'label',
+      entityId: label.id,
+      op: 'create',
+      payload: label,
+      createdAt: now,
+      userId,
+    })
     created = label
   })()
   await finishTransaction(writing, tx.done)
@@ -144,7 +130,14 @@ export async function renameLabel(
     if (nameTaken(existing, current.userId, name, current.id)) return
     const label: Label = { ...current, name, updatedAt: now }
     await labels.put(label)
-    await tx.objectStore('outbox').put(pendingRow('label', label.id, 'update', label, now, label.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'label',
+      entityId: label.id,
+      op: 'update',
+      payload: label,
+      createdAt: now,
+      userId: label.userId,
+    })
     renamed = label
   })()
   await finishTransaction(writing, tx.done)
@@ -175,7 +168,14 @@ export async function deleteLabel(
       await tx.objectStore('noteLabels').delete([link.noteId, link.labelId])
     }
     await tx.objectStore('labels').delete(label.id)
-    await tx.objectStore('outbox').put(pendingRow('label', label.id, 'delete', { id: label.id }, now, label.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'label',
+      entityId: label.id,
+      op: 'delete',
+      payload: { id: label.id },
+      createdAt: now,
+      userId: label.userId,
+    })
     deleted = true
   })()
   await finishTransaction(writing, tx.done)
@@ -208,9 +208,14 @@ export async function addLabelToNote(
     }
     await tx.objectStore('noteLabels').put(link)
     await tx.objectStore('historyEvents').put(labelEvent(note.id, input.deviceId, 'label_added', label.id, now))
-    await tx.objectStore('outbox').put(
-      pendingRow('note_label', note.id, existing ? 'update' : 'create', link, now, note.userId),
-    )
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note_label',
+      entityId: note.id,
+      op: existing ? 'update' : 'create',
+      payload: link,
+      createdAt: now,
+      userId: note.userId,
+    })
     added = true
   })()
   await finishTransaction(writing, tx.done)
@@ -235,7 +240,14 @@ export async function removeLabelFromNote(
     const link: NoteLabel = { ...existing, isRemoved: true, updatedAt: now }
     await tx.objectStore('noteLabels').put(link)
     await tx.objectStore('historyEvents').put(labelEvent(note.id, input.deviceId, 'label_removed', link.labelId, now))
-    await tx.objectStore('outbox').put(pendingRow('note_label', note.id, 'update', link, now, note.userId))
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note_label',
+      entityId: note.id,
+      op: 'update',
+      payload: link,
+      createdAt: now,
+      userId: note.userId,
+    })
     removed = true
   })()
   await finishTransaction(writing, tx.done)
