@@ -1,0 +1,113 @@
+import { expect, test, type Page } from '@playwright/test'
+
+async function readStore<T>(page: Page, store: string): Promise<T[]> {
+  return page.evaluate(async (name) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('tracepad')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      return await new Promise<T[]>((resolve, reject) => {
+        const tx = db.transaction(name, 'readonly')
+        const request = tx.objectStore(name).getAll()
+        request.onsuccess = () => resolve(request.result as T[])
+        request.onerror = () => reject(request.error)
+      })
+    } finally {
+      db.close()
+    }
+  }, store)
+}
+
+function localDateTimeValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+test.beforeEach(async ({ context }) => {
+  await context.grantPermissions(['notifications'])
+  await context.addInitScript(() => {
+    const native = window.Notification
+    const seen: Notification[] = []
+    ;(window as unknown as { __tracepadNotifications: Notification[] }).__tracepadNotifications = seen
+    function Wrapped(title: string, options?: NotificationOptions) {
+      const note = new native(title, options)
+      seen.push(note)
+      return note
+    }
+    Object.defineProperty(Wrapped, 'permission', { get: () => native.permission })
+    Wrapped.requestPermission = (callback?: NotificationPermissionCallback) => native.requestPermission(callback)
+    window.Notification = Wrapped as unknown as typeof Notification
+  })
+})
+
+test('refuses a past reminder time', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Take a note' }).click()
+  await page.getByLabel('Title').fill('Late')
+  await page.getByLabel('Body').fill('Too late')
+  await page.getByRole('heading', { name: 'Tracepad' }).click()
+  await page.getByRole('button', { name: 'Late, Too late' }).click()
+
+  await page.getByRole('button', { name: 'Remind me' }).click()
+  await page.getByLabel('Date and time').fill('2000-01-01T00:00:00')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByRole('alert')).toHaveText('Pick a future time.')
+  expect(await readStore(page, 'reminders')).toHaveLength(0)
+})
+
+test('fires a reminder a few seconds ahead and opens the note', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Take a note' }).click()
+  await page.getByLabel('Title').fill('Groceries')
+  await page.getByLabel('Body').fill('Milk')
+  await page.getByRole('heading', { name: 'Tracepad' }).click()
+  await page.getByRole('button', { name: 'Groceries, Milk' }).click()
+
+  await page.getByRole('button', { name: 'Remind me' }).click()
+  const when = new Date(Date.now() + 5000)
+  await page.getByLabel('Date and time').fill(localDateTimeValue(when))
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('group', { name: 'Reminder' })).toHaveCount(0)
+
+  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'Close' }).click()
+  await expect(page.getByRole('dialog', { name: 'Note' })).toHaveCount(0)
+
+  const inApp = page.getByRole('button', { name: 'Reminder: Groceries' })
+  await expect
+    .poll(
+      async () => {
+        const notifications = await page.evaluate(
+          () => (window as unknown as { __tracepadNotifications: Notification[] }).__tracepadNotifications.length,
+        )
+        return notifications + (await inApp.count())
+      },
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0)
+
+  const shown = await page.evaluate(() => {
+    const note = (window as unknown as { __tracepadNotifications: Notification[] }).__tracepadNotifications[0]
+    return note ? { title: note.title, body: note.body } : null
+  })
+  if (shown) {
+    expect(shown).toEqual({ title: 'Groceries', body: 'Reminder' })
+    await page.evaluate(() => {
+      const note = (window as unknown as { __tracepadNotifications: Notification[] }).__tracepadNotifications[0]
+      note.onclick?.(new MouseEvent('click'))
+    })
+  } else {
+    // Headless Chrome keeps notifications blocked. The reminder still shows in the app.
+    await inApp.click()
+  }
+
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('Title')).toHaveValue('Groceries')
+
+  const stored = await readStore<{ lastFiredAt: string | null }>(page, 'reminders')
+  expect(stored).toHaveLength(1)
+  expect(stored[0]?.lastFiredAt).toBeTruthy()
+})

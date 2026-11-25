@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
 import { startupLocalCleanup } from '../data/notes'
+import { ReminderRuntime } from '../features/reminders/ReminderRuntime'
 import { SearchControls } from '../features/search/SearchControls'
 import { AppRoutes } from './AppRoutes'
 import './app.css'
@@ -36,6 +37,7 @@ export function AppShell() {
   return (
     <main>
       <AppHeader />
+      {db ? <ReminderRuntime db={db} /> : null}
       {db ? <AppRoutes db={db} /> : null}
     </main>
   )

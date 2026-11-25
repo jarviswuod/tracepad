@@ -2,6 +2,7 @@ import type { IDBPTransaction } from 'idb'
 import type { HistoryEvent, IsoTimestamp, Note, OutboxRow, Uuid } from '../domain/types'
 import { isTrashExpired } from '../domain/trash'
 import type { TracepadDB, TracepadDatabase } from './db'
+import { remindersChanged } from './reminders'
 
 type RemovalTx = IDBPTransaction<
   TracepadDB,
@@ -102,6 +103,7 @@ export async function moveToTrash(
     moved = true
   })()
   await finishTransaction(writing, tx.done)
+  if (moved) remindersChanged()
   return moved
 }
 
@@ -126,6 +128,7 @@ export async function restoreFromTrash(
     restored = true
   })()
   await finishTransaction(writing, tx.done)
+  if (restored) remindersChanged()
   return restored
 }
 
@@ -187,6 +190,7 @@ async function removeTrashed(
     }
   })()
   await finishTransaction(writing, tx.done)
+  if (removed > 0) remindersChanged()
   return removed
 }
 

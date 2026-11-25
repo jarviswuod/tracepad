@@ -32,6 +32,7 @@ import { searchBoardCards } from '../search/filterBoard'
 import { readSearchQuery } from '../search/searchUrl'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
 import { NoteContentEnd, NotePinButton, NoteToolbar } from '../labels/NoteMeta'
+import { ReminderControl } from '../reminders/ReminderControl'
 import { Editor, type EditorHandle } from './Editor'
 import './editor.css'
 
@@ -87,7 +88,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   const view = viewFromPath(location.pathname, labels) ?? { kind: 'notes' as const }
   const { text: searchQuery, includeArchived } = readSearchQuery(location.search)
   const request = useRef(0)
-  const openedOnArrival = useRef(false)
+  const arrivalId = useRef<Uuid | null>(null)
   const trashing = useRef(false)
   const expireUndo = useCallback(() => setUndoId(null), [])
   useUndoWindow(undoId, expireUndo)
@@ -161,8 +162,12 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   }
 
   useEffect(() => {
-    if (openNoteId == null || openedOnArrival.current) return
-    openedOnArrival.current = true
+    if (openNoteId == null) {
+      arrivalId.current = null
+      return
+    }
+    if (arrivalId.current === openNoteId) return
+    arrivalId.current = openNoteId
     void openNote(openNoteId)
   })
 
@@ -410,27 +415,37 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
           onClose={() => void editorRef.current?.close()}
           returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
           toolbar={
-            <NoteToolbar
-              trashed={opened.isTrashed}
-              isArchived={opened.isArchived}
-              color={opened.color}
-              labels={labels}
-              activeLabelIds={activeLabelIds}
-              onArchive={(archived) => void changeArchive(archived)}
-              onColor={(color) => void changeColor(color)}
-              onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
-              onAddLabel={(name) => void addLabelByName(name)}
-              onHistory={() => {
-                const noteId = opened.noteId
-                void editorRef.current?.leave().then(
-                  () => onHistory(noteId),
-                  () => undefined,
-                )
-              }}
-              onDelete={() => void trashSession()}
-              onRestore={() => void restoreOpenNote()}
-              onDeleteForever={() => setPendingDelete({ kind: 'note', noteId: opened.noteId })}
-            />
+            <>
+              {deviceId && !opened.isTrashed ? (
+                <ReminderControl
+                  db={db}
+                  noteId={opened.noteId}
+                  deviceId={deviceId}
+                  onChanged={() => void refresh()}
+                />
+              ) : null}
+              <NoteToolbar
+                trashed={opened.isTrashed}
+                isArchived={opened.isArchived}
+                color={opened.color}
+                labels={labels}
+                activeLabelIds={activeLabelIds}
+                onArchive={(archived) => void changeArchive(archived)}
+                onColor={(color) => void changeColor(color)}
+                onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
+                onAddLabel={(name) => void addLabelByName(name)}
+                onHistory={() => {
+                  const noteId = opened.noteId
+                  void editorRef.current?.leave().then(
+                    () => onHistory(noteId),
+                    () => undefined,
+                  )
+                }}
+                onDelete={() => void trashSession()}
+                onRestore={() => void restoreOpenNote()}
+                onDeleteForever={() => setPendingDelete({ kind: 'note', noteId: opened.noteId })}
+              />
+            </>
           }
         >
           {editor}

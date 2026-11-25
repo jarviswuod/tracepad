@@ -86,7 +86,7 @@ function toolbar(dialog: HTMLElement): HTMLElement {
 }
 
 describe('open note layout', () => {
-  it('puts Pin on the title line, chips and the date after the body, and Archive, More, Close in the toolbar', async () => {
+  it('puts Pin on the title line, chips and the date after the body, and Remind me, Archive, More, Close in the toolbar', async () => {
     const db = await open()
     const row = note()
     await db.put('noteVersions', version(row))
@@ -117,6 +117,7 @@ describe('open note layout', () => {
     expect(scroller).toContainElement(edited)
     expect(scroller?.contains(bar)).toBe(false)
     expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+      'Remind me',
       'Archive',
       'More',
       'Close',

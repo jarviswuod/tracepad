@@ -1,0 +1,98 @@
+.reminder-ask,
+.reminder-banner,
+.reminder-notices {
+  margin: 0.75rem 1rem 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  color: #202124;
+  font-family: system-ui, sans-serif;
+  font-size: 0.95rem;
+}
+
+.reminder-ask,
+.reminder-banner {
+  background: #fef7e0;
+}
+
+.reminder-ask p,
+.reminder-notices p {
+  margin: 0;
+}
+
+.reminder-ask button,
+.reminder-notices button {
+  margin-top: 0.45rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #1a73e8;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+
+.reminder-notices {
+  background: #e8f0fe;
+}
+
+.reminder-notices ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reminder-notices li + li {
+  margin-top: 0.15rem;
+}
+
+.reminder-control {
+  position: relative;
+}
+
+.reminder-panel {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 4;
+  width: 16rem;
+  box-sizing: border-box;
+  background: #fff;
+  color: #202124;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 2px rgba(60, 64, 67, 0.3),
+    0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  padding: 0.75rem 0.85rem 0.5rem;
+}
+
+.reminder-panel label {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.reminder-panel input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.3rem;
+  border: 0;
+  border-bottom: 1px solid #dadce0;
+  padding: 0.35rem 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.reminder-error {
+  margin: 0.45rem 0 0;
+  color: #c5221f;
+  font-size: 0.85rem;
+}
+
+.note-modal-actions .reminder-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0;
+}
