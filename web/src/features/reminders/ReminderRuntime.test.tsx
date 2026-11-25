@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { deleteDB } from 'idb'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -6,6 +6,7 @@ import type { Note, NoteVersion, Reminder } from '../../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
 import { NOTIFICATION_ASKED_KEY } from './notify'
 import { ReminderRuntime } from './ReminderRuntime'
+import { resetReminderAudio } from './tone'
 
 const opened: TracepadDatabase[] = []
 const names: string[] = []
@@ -21,6 +22,7 @@ async function open() {
 
 afterEach(async () => {
   cleanup()
+  resetReminderAudio()
   vi.unstubAllGlobals()
   localStorage.removeItem(NOTIFICATION_ASKED_KEY)
   created.length = 0
@@ -151,5 +153,110 @@ describe('ReminderRuntime', () => {
     expect(screen.queryByRole('button', { name: 'Allow notifications' })).not.toBeInTheDocument()
     expect(requestPermission).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem(NOTIFICATION_ASKED_KEY)).toBe('1')
+  })
+
+  function installAudio(options?: { refuse?: boolean }) {
+    const oscillators: Array<{ started: number[]; stopped: number[]; type: string }> = []
+    const gains: Array<{ value: number }> = []
+    const contexts: Array<{ currentTime: number; state: AudioContextState }> = []
+
+    class FakeAudioContext {
+      currentTime = 4
+      state: AudioContextState = 'suspended'
+      destination = {}
+      resume = () => {
+        this.state = 'running'
+        return Promise.resolve()
+      }
+      createOscillator() {
+        const osc = {
+          type: 'sine',
+          frequency: { value: 0 },
+          started: [] as number[],
+          stopped: [] as number[],
+          connect() {
+            return osc
+          },
+          start(when = 0) {
+            if (options?.refuse) throw new Error('The AudioContext was not allowed to start')
+            osc.started.push(when)
+          },
+          stop(when = 0) {
+            osc.stopped.push(when)
+          },
+        }
+        oscillators.push(osc)
+        return osc
+      }
+      createGain() {
+        const gain = { value: 1 }
+        gains.push(gain)
+        return {
+          gain,
+          connect() {
+            return gain
+          },
+        }
+      }
+      constructor() {
+        contexts.push(this)
+      }
+    }
+
+    vi.stubGlobal('AudioContext', FakeAudioContext)
+    return { oscillators, gains, contexts }
+  }
+
+  async function seed(db: TracepadDatabase, fireAt: string) {
+    await db.put('notes', note())
+    await db.put('noteVersions', version())
+    await db.put('reminders', reminder(fireAt))
+  }
+
+  it('plays a soft tone for five seconds when a reminder fires on time', async () => {
+    stubNotification('granted')
+    const audio = installAudio()
+    const db = await open()
+    await seed(db, new Date(Date.now() + 1500).toISOString())
+    renderRuntime(db)
+
+    fireEvent.click(document.body)
+    expect(audio.contexts).toHaveLength(1)
+    expect(audio.contexts[0]?.state).toBe('running')
+    expect(audio.oscillators).toHaveLength(0)
+
+    await waitFor(() => expect(audio.oscillators).toHaveLength(1), { timeout: 5000 })
+    expect(audio.oscillators[0]?.type).toBe('sine')
+    expect(audio.oscillators[0]?.started).toEqual([4])
+    expect(audio.oscillators[0]?.stopped).toEqual([9])
+    expect(audio.gains[0]?.value).toBeGreaterThan(0)
+    expect(audio.gains[0]?.value).toBeLessThanOrEqual(0.1)
+    expect(created).toEqual([{ title: 'Shopping', body: 'Reminder' }])
+  })
+
+  it('does not play a tone for a reminder missed on startup', async () => {
+    stubNotification('granted')
+    const audio = installAudio()
+    const db = await open()
+    await seed(db, '2020-01-01T00:00:00.000Z')
+    renderRuntime(db)
+    fireEvent.click(document.body)
+
+    expect(await screen.findByRole('button', { name: 'Missed reminder: Shopping' })).toBeInTheDocument()
+    expect(audio.oscillators).toHaveLength(0)
+    expect(audio.contexts[0]?.state).toBe('running')
+    expect(created).toEqual([{ title: 'Shopping', body: 'Missed reminder' }])
+  })
+
+  it('still shows the notification when the tone is refused', async () => {
+    stubNotification('granted')
+    installAudio({ refuse: true })
+    const db = await open()
+    await seed(db, new Date(Date.now() + 1500).toISOString())
+    renderRuntime(db)
+    fireEvent.click(document.body)
+
+    await waitFor(() => expect(created).toEqual([{ title: 'Shopping', body: 'Reminder' }]), { timeout: 5000 })
+    expect(screen.queryByRole('button', { name: 'Reminder: Shopping' })).not.toBeInTheDocument()
   })
 })

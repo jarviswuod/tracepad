@@ -5,6 +5,7 @@ import type { ReminderWatch } from '../../data/reminders'
 import type { Uuid } from '../../domain/types'
 import { startReminderEngine } from './engine'
 import { askForNotifications, notificationPermission, showSystemNotification, wasNotificationAsked } from './notify'
+import { installReminderAudioPrime, playReminderAlarm } from './tone'
 import './reminders.css'
 
 type Notice = {
@@ -38,6 +39,8 @@ export function ReminderRuntime({ db }: { db: TracepadDatabase }) {
   }
   openRef.current = open
 
+  useEffect(() => installReminderAudioPrime(), [])
+
   useEffect(() => {
     let active = true
     const engine = startReminderEngine(db, {
@@ -59,6 +62,7 @@ export function ReminderRuntime({ db }: { db: TracepadDatabase }) {
           noteId: watch.noteId,
           onClick: () => openRef.current(watch.noteId),
         })
+        playReminderAlarm()
         if (!shown) setInApp((current) => [...current, toNotice(watch)])
       },
       onWatches(watches) {

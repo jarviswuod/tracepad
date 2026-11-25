@@ -3,6 +3,7 @@ import { getReminder, removeReminder, setReminder } from '../../data/reminders'
 import type { TracepadDatabase } from '../../data/db'
 import { PAST_TIME_MESSAGE, refusalForFireAt } from '../../domain/reminders'
 import type { Reminder, Uuid } from '../../domain/types'
+import { primeReminderAudio } from './tone'
 import './reminders.css'
 
 type ReminderControlProps = {
@@ -21,18 +22,42 @@ function pad(value: number): string {
   return String(value).padStart(2, '0')
 }
 
-/** A datetime-local value in the viewer's local time, including seconds. */
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000
+
+/** A datetime-local value in the viewer's local time, minutes only: YYYY-MM-DDTHH:mm. */
+function formatDatetimeLocal(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export function isoToDatetimeLocal(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  return formatDatetimeLocal(date)
 }
 
+/** Local time, with seconds and milliseconds cleared so the stored instant is a whole minute. */
 export function datetimeLocalToIso(value: string): string | null {
   if (value.trim() === '') return null
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
+  date.setSeconds(0, 0)
   return date.toISOString()
+}
+
+/** The current local date and the clock time three hours after `now`, seconds at zero. */
+export function defaultReminderValue(now: Date): string {
+  const next = new Date(now.getTime() + THREE_HOURS_MS)
+  next.setSeconds(0, 0)
+  return formatDatetimeLocal(next)
+}
+
+/** Saved minute when the note already has a reminder; otherwise the three-hour default. */
+export function reminderFieldValue(fireAt: string | null | undefined, now: Date): string {
+  if (fireAt) {
+    const saved = isoToDatetimeLocal(fireAt)
+    if (saved !== '') return saved
+  }
+  return defaultReminderValue(now)
 }
 
 function formatReminderWhen(fireAt: string): string {
@@ -65,7 +90,7 @@ export function ReminderControl({
     void getReminder(db, noteId).then((row) => {
       if (!active) return
       setStored(row ?? null)
-      if (!touched.current) setValue(row ? isoToDatetimeLocal(row.fireAt) : '')
+      if (!touched.current) setValue(reminderFieldValue(row?.fireAt, new Date()))
     })
     return () => {
       active = false
@@ -115,7 +140,7 @@ export function ReminderControl({
       return
     }
     touched.current = false
-    setValue(reminder ? isoToDatetimeLocal(reminder.fireAt) : '')
+    setValue(reminderFieldValue(reminder?.fireAt, new Date()))
     setError(null)
     setOpen(true)
   }
@@ -132,6 +157,8 @@ export function ReminderControl({
       setError(PAST_TIME_MESSAGE)
       return
     }
+    // Resume during this gesture so a later timer can play the tone.
+    primeReminderAudio()
     if (onEnsureNote) await onEnsureNote()
     const result = await setReminder(db, { noteId, fireAt, deviceId })
     if (!result.ok) {
@@ -166,7 +193,7 @@ export function ReminderControl({
         <input
           ref={inputRef}
           type="datetime-local"
-          step={1}
+          step={60}
           value={value}
           onChange={(event) => {
             touched.current = true
