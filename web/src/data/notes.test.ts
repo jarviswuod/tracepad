@@ -234,6 +234,18 @@ describe('commitNoteText', () => {
     expect(await db.count('outbox')).toBe(1)
   })
 
+  it('keeps an empty new note when keepEmpty is set, so a reminder or archive can follow', async () => {
+    const db = await open()
+    const result = await commitNoteText(db, commitBase({ next: { title: '', body: '' }, keepEmpty: true }))
+    expect(result.kind).toBe('cut')
+    expect(await db.count('notes')).toBe(1)
+    expect(await db.count('noteVersions')).toBe(1)
+    const stored = await db.get('notes', noteId)
+    expect(stored?.isArchived).toBe(false)
+    const version = await db.get('noteVersions', stored?.currentVersionId ?? '')
+    expect(version).toMatchObject({ title: null, body: null, parentVersionId: null })
+  })
+
   it('discards an empty new note and leaves no rows', async () => {
     const db = await open()
     const result = await commitNoteText(

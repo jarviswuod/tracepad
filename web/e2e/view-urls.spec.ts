@@ -8,7 +8,8 @@ test('view URLs stay put across reload, rename, and Back to note', async ({ page
   await createNote(page, 'Alpha', 'Apples')
   await page.getByRole('button', { name: 'Alpha, Apples', exact: true }).click()
   const note = page.getByRole('dialog', { name: 'Note' })
-  await note.getByRole('button', { name: 'Archive', exact: true }).click()
+  await note.getByRole('button', { name: 'More', exact: true }).click()
+  await note.getByRole('menuitem', { name: 'Archive', exact: true }).click()
   await note.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(note).toHaveCount(0)
 

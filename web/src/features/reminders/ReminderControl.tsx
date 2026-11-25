@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getReminder, removeReminder, setReminder } from '../../data/reminders'
 import type { TracepadDatabase } from '../../data/db'
+import { PAST_TIME_MESSAGE, refusalForFireAt } from '../../domain/reminders'
 import type { Reminder, Uuid } from '../../domain/types'
 import './reminders.css'
 
@@ -9,6 +10,11 @@ type ReminderControlProps = {
   noteId: Uuid
   deviceId: Uuid
   onChanged: () => void
+  /** Write the note row before the reminder, when Take a note has not saved one yet. */
+  onEnsureNote?: () => Promise<void>
+  /** `form` is the date form inside More. The parent owns closing it. */
+  mode?: 'button' | 'form'
+  onClose?: () => void
 }
 
 function pad(value: number): string {
@@ -36,19 +42,30 @@ function formatReminderWhen(fireAt: string): string {
 }
 
 /** Set, change, or remove the note's one reminder. A past time shows "Pick a future time." */
-export function ReminderControl({ db, noteId, deviceId, onChanged }: ReminderControlProps) {
+export function ReminderControl({
+  db,
+  noteId,
+  deviceId,
+  onChanged,
+  onEnsureNote,
+  mode = 'button',
+  onClose,
+}: ReminderControlProps) {
+  const embedded = mode === 'form'
   const [reminder, setStored] = useState<Reminder | null>(null)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(embedded)
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const touched = useRef(false)
 
   useEffect(() => {
     let active = true
     void getReminder(db, noteId).then((row) => {
       if (!active) return
       setStored(row ?? null)
+      if (!touched.current) setValue(row ? isoToDatetimeLocal(row.fireAt) : '')
     })
     return () => {
       active = false
@@ -60,7 +77,7 @@ export function ReminderControl({ db, noteId, deviceId, onChanged }: ReminderCon
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || embedded) return
 
     function shut(event: Event) {
       const target = event.target
@@ -90,21 +107,32 @@ export function ReminderControl({ db, noteId, deviceId, onChanged }: ReminderCon
       document.removeEventListener('click', shut, true)
       document.removeEventListener('keydown', onKey, true)
     }
-  }, [open])
+  }, [embedded, open])
 
   function toggle() {
     if (open) {
       setOpen(false)
       return
     }
+    touched.current = false
     setValue(reminder ? isoToDatetimeLocal(reminder.fireAt) : '')
     setError(null)
     setOpen(true)
   }
 
+  function closeForm() {
+    setOpen(false)
+    onClose?.()
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault()
     const fireAt = datetimeLocalToIso(value) ?? value
+    if (refusalForFireAt(fireAt, new Date().toISOString())) {
+      setError(PAST_TIME_MESSAGE)
+      return
+    }
+    if (onEnsureNote) await onEnsureNote()
     const result = await setReminder(db, { noteId, fireAt, deviceId })
     if (!result.ok) {
       setError(result.message)
@@ -113,7 +141,7 @@ export function ReminderControl({ db, noteId, deviceId, onChanged }: ReminderCon
     const stored = await getReminder(db, noteId)
     setStored(stored ?? null)
     setError(null)
-    setOpen(false)
+    closeForm()
     if (result.changed) onChanged()
   }
 
@@ -122,43 +150,53 @@ export function ReminderControl({ db, noteId, deviceId, onChanged }: ReminderCon
     if (!removed) return
     setStored(null)
     setError(null)
-    setOpen(false)
+    closeForm()
     onChanged()
   }
+
+  const form = open ? (
+    <form
+      className={embedded ? 'reminder-fields' : 'reminder-panel'}
+      role="group"
+      aria-label="Reminder"
+      onSubmit={(event) => void save(event)}
+    >
+      <label>
+        Date and time
+        <input
+          ref={inputRef}
+          type="datetime-local"
+          step={1}
+          value={value}
+          onChange={(event) => {
+            touched.current = true
+            setValue(event.target.value)
+            setError(null)
+          }}
+        />
+      </label>
+      {error ? (
+        <p className="reminder-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <button type="submit">Save</button>
+      {reminder ? (
+        <button type="button" onClick={() => void remove()}>
+          Remove reminder
+        </button>
+      ) : null}
+    </form>
+  ) : null
+
+  if (embedded) return form
 
   return (
     <div className="reminder-control" ref={rootRef}>
       <button type="button" aria-expanded={open} aria-label={reminder ? 'Change reminder' : 'Remind me'} onClick={toggle}>
         {reminder ? formatReminderWhen(reminder.fireAt) : 'Remind me'}
       </button>
-      {open ? (
-        <form className="reminder-panel" role="group" aria-label="Reminder" onSubmit={(event) => void save(event)}>
-          <label>
-            Date and time
-            <input
-              ref={inputRef}
-              type="datetime-local"
-              step={1}
-              value={value}
-              onChange={(event) => {
-                setValue(event.target.value)
-                setError(null)
-              }}
-            />
-          </label>
-          {error ? (
-            <p className="reminder-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <button type="submit">Save</button>
-          {reminder ? (
-            <button type="button" onClick={() => void remove()}>
-              Remove reminder
-            </button>
-          ) : null}
-        </form>
-      ) : null}
+      {form}
     </div>
   )
 }

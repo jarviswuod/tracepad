@@ -24,6 +24,12 @@ export type EditorHandle = {
   leave: () => Promise<void>
   /** Leave the note, then call `onLeft`. Safe to call more than once. */
   close: () => Promise<void>
+  /**
+   * Write the note if it has no row yet, including when the title and body are empty.
+   * Archive and Remind me call this, then set their own flag. It does not cut a version
+   * once the note already exists.
+   */
+  ensureSaved: () => Promise<void>
 }
 
 type EditorProps = {
@@ -46,6 +52,8 @@ type EditorProps = {
   titleAside?: ReactNode
   /** A saved note uses the modal toolbar instead of Move to trash and History. */
   showFooter?: boolean
+  /** More on a new note from "Take a note". A saved note uses the modal toolbar. */
+  more?: ReactNode
   /** Grow the body so a long note scrolls in the modal, not inside the field. */
   expandBody?: boolean
   ref?: Ref<EditorHandle>
@@ -117,6 +125,7 @@ export function Editor({
   actions,
   titleAside,
   showFooter = true,
+  more,
   expandBody = false,
   ref,
 }: EditorProps) {
@@ -233,7 +242,7 @@ export function Editor({
     await settleIndicator(current)
   }
 
-  async function cutSnapshot(snapshot: Snapshot) {
+  async function persistSnapshot(snapshot: Snapshot, keepEmpty: boolean) {
     const base = openedRef.current
     const result = await commitNoteContent(db, {
       noteId,
@@ -241,12 +250,28 @@ export function Editor({
       openedVersionId: base.id,
       opened: toContent(base),
       next: toContent(snapshot),
+      keepEmpty,
     })
     if (result.kind === 'cut') {
       openedRef.current = { ...snapshot, id: result.versionId }
     }
     await settleIndicator(snapshot)
     return result
+  }
+
+  function cutSnapshot(snapshot: Snapshot) {
+    return persistSnapshot(snapshot, false)
+  }
+
+  /** The note row Archive and Remind me need. An existing note is left as it is. */
+  async function ensureSaved() {
+    clearTimer()
+    await enqueue(async () => {
+      if (openedRef.current.id != null) return
+      const snapshot = contentRef.current
+      await persistSnapshot(snapshot, true)
+      if (!sameSnapshot(contentRef.current, snapshot)) scheduleDraft()
+    })
   }
 
   async function leave() {
@@ -282,7 +307,11 @@ export function Editor({
     )
   }
 
-  useImperativeHandle(ref, () => ({ leave, close: requestClose }), [leave, requestClose])
+  useImperativeHandle(ref, () => ({ leave, close: requestClose, ensureSaved }), [
+    leave,
+    requestClose,
+    ensureSaved,
+  ])
 
   useEffect(() => {
     return () => clearTimer()
@@ -562,6 +591,7 @@ export function Editor({
         <button type="button" className="editor-checklist-toggle" onClick={convert}>
           {kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
         </button>
+        {more}
         {showFooter ? (
           <>
             {trashed ? (

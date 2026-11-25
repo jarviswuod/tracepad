@@ -200,9 +200,14 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
     await refresh()
   }
 
+  function ensureNoteSaved(): Promise<void> {
+    return editorRef.current?.ensureSaved() ?? Promise.resolve()
+  }
+
   async function changeArchive(archived: boolean) {
     const current = session
-    if (!current?.version) return
+    if (!current || current.isTrashed) return
+    await ensureNoteSaved()
     const changed = await setArchived(db, {
       noteId: current.noteId,
       archived,
@@ -343,6 +348,21 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
       ? searchBoardCards(cards, { query: searchQuery, includeArchived: true, labelId: null })
       : searchBoardCards(sources, searchOptionsFor(view, searchQuery, includeArchived))
 
+  function renderReminder(close: () => void) {
+    if (!session || !deviceId) return null
+    return (
+      <ReminderControl
+        mode="form"
+        db={db}
+        noteId={session.noteId}
+        deviceId={deviceId}
+        onEnsureNote={ensureNoteSaved}
+        onChanged={() => void refresh()}
+        onClose={close}
+      />
+    )
+  }
+
   const editor =
     session && deviceId ? (
       <Editor
@@ -358,6 +378,16 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
         onRestore={() => void restoreOpenNote()}
         showFooter={session.version == null}
         expandBody={session.version != null}
+        more={
+          session.version == null ? (
+            <NoteToolbar
+              scope="create"
+              isArchived={session.isArchived}
+              onArchive={(archived) => void changeArchive(archived)}
+              renderReminder={renderReminder}
+            />
+          ) : null
+        }
         titleAside={
           session.version ? (
             <NotePinButton isPinned={session.isPinned} onPin={(pinned) => void changePin(pinned)} />
@@ -415,37 +445,29 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
           onClose={() => void editorRef.current?.close()}
           returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
           toolbar={
-            <>
-              {deviceId && !opened.isTrashed ? (
-                <ReminderControl
-                  db={db}
-                  noteId={opened.noteId}
-                  deviceId={deviceId}
-                  onChanged={() => void refresh()}
-                />
-              ) : null}
-              <NoteToolbar
-                trashed={opened.isTrashed}
-                isArchived={opened.isArchived}
-                color={opened.color}
-                labels={labels}
-                activeLabelIds={activeLabelIds}
-                onArchive={(archived) => void changeArchive(archived)}
-                onColor={(color) => void changeColor(color)}
-                onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
-                onAddLabel={(name) => void addLabelByName(name)}
-                onHistory={() => {
-                  const noteId = opened.noteId
-                  void editorRef.current?.leave().then(
-                    () => onHistory(noteId),
-                    () => undefined,
-                  )
-                }}
-                onDelete={() => void trashSession()}
-                onRestore={() => void restoreOpenNote()}
-                onDeleteForever={() => setPendingDelete({ kind: 'note', noteId: opened.noteId })}
-              />
-            </>
+            <NoteToolbar
+              scope="note"
+              trashed={opened.isTrashed}
+              isArchived={opened.isArchived}
+              color={opened.color}
+              labels={labels}
+              activeLabelIds={activeLabelIds}
+              onArchive={(archived) => void changeArchive(archived)}
+              onColor={(color) => void changeColor(color)}
+              onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}
+              onAddLabel={(name) => void addLabelByName(name)}
+              onHistory={() => {
+                const noteId = opened.noteId
+                void editorRef.current?.leave().then(
+                  () => onHistory(noteId),
+                  () => undefined,
+                )
+              }}
+              onDelete={() => void trashSession()}
+              onRestore={() => void restoreOpenNote()}
+              onDeleteForever={() => setPendingDelete({ kind: 'note', noteId: opened.noteId })}
+              renderReminder={renderReminder}
+            />
           }
         >
           {editor}

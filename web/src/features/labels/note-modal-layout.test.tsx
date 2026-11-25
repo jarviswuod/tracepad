@@ -86,7 +86,7 @@ function toolbar(dialog: HTMLElement): HTMLElement {
 }
 
 describe('open note layout', () => {
-  it('puts Pin on the title line, chips and the date after the body, and Remind me, Archive, More, Close in the toolbar', async () => {
+  it('puts Pin on the title line, chips and the date after the body, and More and Close in the toolbar', async () => {
     const db = await open()
     const row = note()
     await db.put('noteVersions', version(row))
@@ -116,11 +116,18 @@ describe('open note layout', () => {
     expect(scroller).toContainElement(chip)
     expect(scroller).toContainElement(edited)
     expect(scroller?.contains(bar)).toBe(false)
-    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['More', 'Close'])
+    expect(within(dialog).queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+    fireEvent.click(within(bar).getByRole('button', { name: 'More' }))
+    const menu = within(dialog).getByRole('menu', { name: 'More' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Remind me',
       'Archive',
-      'More',
-      'Close',
+      'Change labels',
+      'Colors',
+      'Version history',
+      'Delete note',
     ])
     expect(within(dialog).queryByRole('button', { name: 'Archive note' })).not.toBeInTheDocument()
     expect(within(dialog).queryByLabelText('Label name')).not.toBeInTheDocument()
@@ -215,6 +222,7 @@ describe('open note layout', () => {
     ])
     expect(within(dialog).queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
 
     fireEvent.click(within(bar).getByRole('button', { name: 'Delete forever' }))
     const confirm = await screen.findByRole('dialog', { name: 'Delete forever?' })
@@ -236,7 +244,7 @@ describe('open note layout', () => {
     expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
   })
 
-  it('keeps Take a note inline, with Move to trash and History', async () => {
+  it('keeps Take a note inline, with More, Move to trash and History', async () => {
     const db = await open()
     await renderHome(db)
     fireEvent.click(screen.getByRole('button', { name: 'Take a note' }))
@@ -245,7 +253,11 @@ describe('open note layout', () => {
     expect(noteGroup.closest('.board-column')).not.toBeNull()
     expect(within(noteGroup).getByRole('button', { name: 'Move to trash' })).toBeInTheDocument()
     expect(within(noteGroup).getByRole('button', { name: 'History' })).toBeInTheDocument()
-    expect(within(noteGroup).queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     expect(within(noteGroup).queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
+    expect(within(noteGroup).queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(noteGroup).getByRole('button', { name: 'More' }))
+    const menu = within(noteGroup).getByRole('menu', { name: 'More' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Remind me', 'Archive'])
   })
 })

@@ -33,6 +33,15 @@
   position: relative;
 }
 
+.editor-actions .note-more {
+  flex: none;
+}
+
+.editor-actions .note-more-panel {
+  left: auto;
+  right: 0;
+}
+
 .note-more-panel {
   position: absolute;
   bottom: calc(100% + 4px);
@@ -125,8 +134,24 @@
 }
 
 .note-modal-actions .note-menu-item:hover,
-.note-modal-actions .note-create-label:hover {
+.note-modal-actions .note-create-label:hover,
+.editor-actions .note-more-panel button:hover {
   background: rgba(95, 99, 104, 0.08);
+}
+
+.editor-actions .note-more-panel button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #202124;
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
 }
 
 .note-modal-actions .color-swatch {

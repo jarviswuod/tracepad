@@ -9,7 +9,7 @@ test('searches notes, includes archived notes from the switch, and stays inside 
 
   await page.getByRole('button', { name: 'Orchard, Apples', exact: true }).click()
   const orchard = page.getByRole('dialog', { name: 'Note' })
-  await orchard.getByRole('button', { name: 'Archive', exact: true }).click()
+  await chooseMore(orchard, 'Archive')
   await orchard.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Orchard, Apples', exact: true })).toHaveCount(0)
 
@@ -205,7 +205,7 @@ async function labelNote(page: Page, card: string, name: string) {
 async function archiveNote(page: Page, card: string) {
   await page.getByRole('button', { name: card, exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Note' })
-  await dialog.getByRole('button', { name: 'Archive', exact: true }).click()
+  await chooseMore(dialog, 'Archive')
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.getByRole('button', { name: card, exact: true })).toHaveCount(0)
 }

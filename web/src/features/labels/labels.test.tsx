@@ -160,7 +160,7 @@ describe('pin, archive, color and labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const again = await screen.findByRole('dialog', { name: 'Note' })
-    fireEvent.click(within(again).getByRole('button', { name: 'Archive' }))
+    openNoteMenu(again, 'Archive')
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Shopping, Milk', hidden: true })).not.toBeInTheDocument(),
     )
@@ -171,7 +171,7 @@ describe('pin, archive, color and labels', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))
     const archived = await screen.findByRole('dialog', { name: 'Note' })
-    fireEvent.click(within(archived).getByRole('button', { name: 'Unarchive' }))
+    openNoteMenu(archived, 'Unarchive')
     await waitFor(async () => expect((await db.get('notes', noteId))?.isArchived).toBe(false))
     fireEvent.click(within(archived).getByRole('button', { name: /^Close$/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())

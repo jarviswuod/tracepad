@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NoteVersion } from '../../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
 import { commitNoteText, ensureDeviceId } from '../../data/notes'
+import { isoToDatetimeLocal } from '../reminders/ReminderControl'
 import { DRAFT_DEBOUNCE_MS, PENDING_SYNC_POLL_MS } from './Editor'
 import { MemoryRouter } from 'react-router-dom'
 import { AppRoutes } from '../../app/AppRoutes'
@@ -224,6 +225,131 @@ describe('editor', () => {
     leaveNote()
     await screen.findByRole('button', { name: 'Take a note' })
     expect(await db.count('noteVersions')).toBe(1)
+  })
+
+  it('archives a blank new note through More and keeps it', async () => {
+    const db = await open()
+    await renderHome(db)
+    await startNote()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
+
+    await waitFor(async () => expect(await db.count('notes')).toBe(1))
+    const stored = (await db.getAll('notes'))[0]
+    expect(stored?.isArchived).toBe(true)
+    expect(await db.count('noteVersions')).toBe(1)
+    expect((await db.getAll('historyEvents')).map((event) => event.type)).toEqual(['archived'])
+
+    leaveNote()
+    await screen.findByRole('button', { name: 'Take a note' })
+    expect(await db.count('notes')).toBe(1)
+    expect(screen.queryByRole('button', { name: 'Untitled' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+    expect(await screen.findByRole('button', { name: 'Untitled' })).toBeInTheDocument()
+  })
+
+  it('archives typed text on a new note without a second version', async () => {
+    const db = await open()
+    await renderHome(db)
+    const { title, body } = await startNote()
+    fireEvent.change(title, { target: { value: 'Shopping' } })
+    fireEvent.change(body, { target: { value: 'Milk' } })
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
+
+    await waitFor(async () => expect((await db.getAll('notes'))[0]?.isArchived).toBe(true))
+    expect(await db.count('noteVersions')).toBe(1)
+    expect((await db.getAll('noteVersions'))[0]).toMatchObject({ title: 'Shopping', body: 'Milk' })
+
+    leaveNote()
+    await screen.findByRole('button', { name: 'Take a note' })
+    expect(await db.count('noteVersions')).toBe(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+    expect(await screen.findByRole('button', { name: 'Shopping, Milk' })).toBeInTheDocument()
+  })
+
+  it('sets a reminder on a blank new note and keeps it', async () => {
+    const db = await open()
+    await renderHome(db)
+    await startNote()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remind me' }))
+    const soon = new Date(Date.now() + 60_000).toISOString()
+    fireEvent.change(screen.getByLabelText('Date and time'), { target: { value: isoToDatetimeLocal(soon) } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => expect(await db.count('reminders')).toBe(1))
+    expect(await db.count('notes')).toBe(1)
+    expect(await db.count('noteVersions')).toBe(1)
+    expect((await db.getAll('notes'))[0]?.isArchived).toBe(false)
+    expect((await db.getAll('historyEvents')).map((event) => event.type)).toEqual(['reminder_set'])
+
+    leaveNote()
+    expect(await screen.findByRole('button', { name: 'Untitled' })).toBeInTheDocument()
+    expect(await db.count('notes')).toBe(1)
+    expect(await db.count('reminders')).toBe(1)
+  })
+
+  it('does not keep a blank note when the reminder time is in the past', async () => {
+    const db = await open()
+    await renderHome(db)
+    await startNote()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remind me' }))
+    fireEvent.change(screen.getByLabelText('Date and time'), { target: { value: '2000-01-01T00:00:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pick a future time.')
+    expect(await db.count('notes')).toBe(0)
+    expect(await db.count('reminders')).toBe(0)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    leaveNote()
+    await screen.findByRole('button', { name: 'Take a note' })
+    expect(await db.count('notes')).toBe(0)
+  })
+
+  it('sets, changes and removes a reminder from More without cutting a version', async () => {
+    const db = await open()
+    await renderHome(db)
+    const { title, body } = await startNote()
+    fireEvent.change(title, { target: { value: 'Shopping' } })
+    fireEvent.change(body, { target: { value: 'Milk' } })
+    leaveNote()
+    await screen.findByRole('button', { name: /Shopping/ })
+    expect(await db.count('noteVersions')).toBe(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /Shopping/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Note' })
+    const soon = new Date(Date.now() + 60_000).toISOString()
+    const later = new Date(Date.now() + 120_000).toISOString()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Remind me' }))
+    fireEvent.change(within(dialog).getByLabelText('Date and time'), { target: { value: isoToDatetimeLocal(soon) } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(async () => expect(await db.count('reminders')).toBe(1))
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Remind me' }))
+    const input = await within(dialog).findByLabelText('Date and time')
+    await waitFor(() => expect(input).not.toHaveValue(''))
+    fireEvent.change(input, { target: { value: isoToDatetimeLocal(later) } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(async () => {
+      const types = (await db.getAll('historyEvents')).map((event) => event.type).sort()
+      expect(types).toEqual(['reminder_changed', 'reminder_set'])
+    })
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Remind me' }))
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove reminder' }))
+    await waitFor(async () => expect(await db.count('reminders')).toBe(0))
+    expect(await db.count('noteVersions')).toBe(1)
+    expect((await db.getAll('historyEvents')).map((event) => event.type).sort()).toEqual([
+      'reminder_changed',
+      'reminder_removed',
+      'reminder_set',
+    ])
   })
 })
 

@@ -12,7 +12,7 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   const dialog = page.getByRole('dialog', { name: 'Note' })
   await dialog.getByRole('button', { name: 'Pin', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Archive', exact: true }).click()
+  await chooseMore(dialog, 'Archive')
   await chooseMore(dialog, 'Colors')
   await dialog.getByRole('button', { name: 'Yellow color', exact: true }).click()
   await chooseMore(dialog, 'Change labels')

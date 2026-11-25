@@ -408,6 +408,8 @@ export function commitNoteText(
     opened: { title: string | null; body: string | null }
     next: { title: string | null; body: string | null }
     now?: IsoTimestamp
+    /** Keep a brand-new empty note so Archive or a reminder can be stored on it. */
+    keepEmpty?: boolean
   },
 ): Promise<CommitResult> {
   return commitNoteContent(db, {
@@ -417,12 +419,16 @@ export function commitNoteText(
     opened: { kind: 'text', title: input.opened.title, body: input.opened.body },
     next: { kind: 'text', title: input.next.title, body: input.next.body },
     now: input.now,
+    keepEmpty: input.keepEmpty,
   })
 }
 
 /**
  * Leave the note, press Ctrl+S, or convert between text and a checklist.
  * A kind change cuts a version. Item edits cut one only when this is called.
+ * `keepEmpty` is the Archive / Remind me exception: a brand-new note with no
+ * title and no body is still written, through this same cut. Leaving without
+ * that flag still discards it.
  */
 export async function commitNoteContent(
   db: TracepadDatabase,
@@ -433,6 +439,7 @@ export async function commitNoteContent(
     opened: NoteContent
     next: NoteContent
     now?: IsoTimestamp
+    keepEmpty?: boolean
   },
 ): Promise<CommitResult> {
   const decision = decideContentCut({
@@ -441,7 +448,7 @@ export async function commitNoteContent(
     next: input.next,
   })
 
-  if (decision.kind === 'discard') {
+  if (decision.kind === 'discard' && !input.keepEmpty) {
     await discardUnsaved(db, input.noteId, input.deviceId)
     return { kind: 'discard' }
   }
@@ -453,7 +460,7 @@ export async function commitNoteContent(
   const versionId = await cutVersion(db, {
     noteId: input.noteId,
     deviceId: input.deviceId,
-    parentVersionId: decision.parentVersionId,
+    parentVersionId: decision.kind === 'cut' ? decision.parentVersionId : null,
     content: input.next,
     now: nowStamp(input.now),
     versionId: crypto.randomUUID(),

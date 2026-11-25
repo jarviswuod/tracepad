@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Label, Uuid } from '../../domain/types'
 import { NOTE_COLORS } from './colors'
 import { formatEditedDate } from './editedDate'
 import './labels.css'
 
-type Panel = 'closed' | 'menu' | 'labels' | 'colors'
+type Panel = 'closed' | 'menu' | 'reminder' | 'labels' | 'colors'
 
 type NotePinButtonProps = {
   isPinned: boolean
@@ -45,41 +45,39 @@ export function NoteContentEnd({ labels, activeLabelIds, updatedAt }: NoteConten
   )
 }
 
-type NoteToolbarProps = {
-  trashed: boolean
+type NoteToolbarBase = {
   isArchived: boolean
-  color: string | null
-  labels: Label[]
-  activeLabelIds: Uuid[]
   onArchive: (archived: boolean) => void
-  onColor: (color: string | null) => void
-  onToggleLabel: (labelId: Uuid, on: boolean) => void
-  onAddLabel: (name: string) => void
-  onHistory: () => void
-  onDelete: () => void
-  onRestore: () => void
-  onDeleteForever: () => void
+  /** The reminder form. Called with a close function when Remind me is open. */
+  renderReminder: (close: () => void) => ReactNode
 }
 
+type NoteToolbarProps = NoteToolbarBase &
+  (
+    | { scope: 'create' }
+    | {
+        scope: 'note'
+        trashed: boolean
+        color: string | null
+        labels: Label[]
+        activeLabelIds: Uuid[]
+        onColor: (color: string | null) => void
+        onToggleLabel: (labelId: Uuid, on: boolean) => void
+        onAddLabel: (name: string) => void
+        onHistory: () => void
+        onDelete: () => void
+        onRestore: () => void
+        onDeleteForever: () => void
+      }
+  )
+
 /**
- * The open note's bottom bar. A saved note has Archive, More, and Close.
- * A trashed note has Restore and Delete forever, and no More.
+ * More, and Close from the modal. Remind me and Archive live in More.
+ * On Take a note, More lists only those two. A trashed note has Restore and
+ * Delete forever, and no More.
  */
-export function NoteToolbar({
-  trashed,
-  isArchived,
-  color,
-  labels,
-  activeLabelIds,
-  onArchive,
-  onColor,
-  onToggleLabel,
-  onAddLabel,
-  onHistory,
-  onDelete,
-  onRestore,
-  onDeleteForever,
-}: NoteToolbarProps) {
+export function NoteToolbar(props: NoteToolbarProps) {
+  const { isArchived, onArchive, renderReminder } = props
   const [panel, setPanel] = useState<Panel>('closed')
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -126,128 +124,151 @@ export function NoteToolbar({
     }
   }, [open])
 
-  if (trashed) {
+  if (props.scope === 'note' && props.trashed) {
     return (
       <>
-        <button type="button" onClick={onRestore}>
+        <button type="button" onClick={props.onRestore}>
           Restore
         </button>
-        <button type="button" onClick={onDeleteForever}>
+        <button type="button" onClick={props.onDeleteForever}>
           Delete forever
         </button>
       </>
     )
   }
 
+  const note = props.scope === 'note' ? props : null
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
-  const filtered = needle === '' ? labels : labels.filter((label) => label.name.toLowerCase().includes(needle))
-  const showCreate = needle !== '' && filtered.length === 0
+  const filtered =
+    note == null ? [] : needle === '' ? note.labels : note.labels.filter((label) => label.name.toLowerCase().includes(needle))
+  const showCreate = note != null && needle !== '' && filtered.length === 0
 
   function toggleMore() {
     setQuery('')
     setPanel((current) => (current === 'closed' ? 'menu' : 'closed'))
   }
 
+  function closePanel() {
+    setPanel('closed')
+    setQuery('')
+  }
+
   return (
-    <>
-      <button type="button" onClick={() => onArchive(!isArchived)}>
-        {isArchived ? 'Unarchive' : 'Archive'}
+    <div className="note-more" ref={rootRef}>
+      <button type="button" aria-expanded={open} aria-haspopup="menu" onClick={toggleMore}>
+        More
       </button>
-      <div className="note-more" ref={rootRef}>
-        <button type="button" aria-expanded={open} aria-haspopup="menu" onClick={toggleMore}>
-          More
-        </button>
-        {panel === 'menu' ? (
-          <div className="note-more-panel" role="menu" aria-label="More">
-            <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('labels')}>
-              Change labels
-            </button>
-            <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('colors')}>
-              Colors
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="note-menu-item"
-              onClick={() => {
-                setPanel('closed')
-                onHistory()
-              }}
-            >
-              Version history
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="note-menu-item"
-              onClick={() => {
-                setPanel('closed')
-                onDelete()
-              }}
-            >
-              Delete note
-            </button>
-          </div>
-        ) : null}
-        {panel === 'labels' ? (
-          <div className="note-more-panel" role="group" aria-label="Label note">
-            <p className="note-panel-heading">Label note</p>
-            <input
-              ref={labelInputRef}
-              className="note-label-field"
-              aria-label="Enter label name"
-              placeholder="Enter label name"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <ul className="note-label-scroll">
-              {filtered.map((label) => (
-                <li key={label.id}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={activeLabelIds.includes(label.id)}
-                      onChange={(event) => onToggleLabel(label.id, event.target.checked)}
-                    />
-                    {label.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {showCreate ? (
+      {panel === 'menu' ? (
+        <div className="note-more-panel" role="menu" aria-label="More">
+          <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('reminder')}>
+            Remind me
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="note-menu-item"
+            onClick={() => {
+              closePanel()
+              onArchive(!isArchived)
+            }}
+          >
+            {isArchived ? 'Unarchive' : 'Archive'}
+          </button>
+          {props.scope === 'note' ? (
+            <>
+              <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('labels')}>
+                Change labels
+              </button>
+              <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('colors')}>
+                Colors
+              </button>
               <button
                 type="button"
-                className="note-create-label"
+                role="menuitem"
+                className="note-menu-item"
                 onClick={() => {
-                  setQuery('')
-                  onAddLabel(trimmed)
+                  closePanel()
+                  props.onHistory()
                 }}
               >
-                {`Create "${trimmed}"`}
+                Version history
               </button>
-            ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                className="note-menu-item"
+                onClick={() => {
+                  closePanel()
+                  props.onDelete()
+                }}
+              >
+                Delete note
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {panel === 'reminder' ? (
+        <div className="note-more-panel note-reminder-panel">{renderReminder(closePanel)}</div>
+      ) : null}
+      {note && panel === 'labels' ? (
+        <div className="note-more-panel" role="group" aria-label="Label note">
+          <p className="note-panel-heading">Label note</p>
+          <input
+            ref={labelInputRef}
+            className="note-label-field"
+            aria-label="Enter label name"
+            placeholder="Enter label name"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <ul className="note-label-scroll">
+            {filtered.map((label) => (
+              <li key={label.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={note.activeLabelIds.includes(label.id)}
+                    onChange={(event) => note.onToggleLabel(label.id, event.target.checked)}
+                  />
+                  {label.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+          {showCreate ? (
+            <button
+              type="button"
+              className="note-create-label"
+              onClick={() => {
+                setQuery('')
+                note.onAddLabel(trimmed)
+              }}
+            >
+              {`Create "${trimmed}"`}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {note && panel === 'colors' ? (
+        <div className="note-more-panel note-color-panel" role="group" aria-label="Colors">
+          <div className="color-choices">
+            {NOTE_COLORS.map((swatch) => (
+              <button
+                key={swatch.name}
+                type="button"
+                className="color-swatch"
+                title={swatch.name}
+                aria-label={`${swatch.name} color`}
+                aria-pressed={note.color === swatch.value}
+                style={{ backgroundColor: swatch.value ?? '#ffffff' }}
+                onClick={() => note.onColor(swatch.value)}
+              />
+            ))}
           </div>
-        ) : null}
-        {panel === 'colors' ? (
-          <div className="note-more-panel note-color-panel" role="group" aria-label="Colors">
-            <div className="color-choices">
-              {NOTE_COLORS.map((swatch) => (
-                <button
-                  key={swatch.name}
-                  type="button"
-                  className="color-swatch"
-                  title={swatch.name}
-                  aria-label={`${swatch.name} color`}
-                  aria-pressed={color === swatch.value}
-                  style={{ backgroundColor: swatch.value ?? '#ffffff' }}
-                  onClick={() => onColor(swatch.value)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </>
+        </div>
+      ) : null}
+    </div>
   )
 }
