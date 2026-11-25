@@ -1,12 +1,22 @@
 import type { TracepadDatabase } from './db'
 import { isTrashed, TRASH_RETENTION_DAYS } from '../domain/trash'
-import { decideVersionCut, normalizeNoteText, type NoteText } from '../domain/versioning'
+import {
+  decideContentCut,
+  normalizeChecklistItems,
+  normalizeField,
+  normalizeNoteText,
+  sameChecklistItems,
+  type NoteContent,
+} from '../domain/versioning'
 import type {
+  ChecklistItem,
+  ChecklistTick,
   Draft,
   HistoryEvent,
   IsoTimestamp,
   Label,
   Note,
+  NoteKind,
   NoteLabel,
   NoteVersion,
   OutboxRow,
@@ -252,23 +262,47 @@ export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promis
   return cards
 }
 
+type SaveDraftInput = {
+  noteId: Uuid
+  deviceId: Uuid
+  baseVersionId: Uuid | null
+  title: string | null
+  now?: IsoTimestamp
+} & (
+  | { kind?: 'text'; body: string | null }
+  | { kind: 'checklist'; checklistItems: ChecklistItem[] }
+)
+
+function sameStoredItems(a: ChecklistItem[] | null, b: ChecklistItem[] | null): boolean {
+  if (a == null && b == null) return true
+  return sameChecklistItems(a ?? [], b ?? [])
+}
+
+function draftFields(input: SaveDraftInput): {
+  kind: NoteKind
+  title: string | null
+  body: string | null
+  checklistItems: ChecklistItem[] | null
+} {
+  const title = normalizeField(input.title)
+  if (input.kind === 'checklist') {
+    return {
+      kind: 'checklist',
+      title,
+      body: null,
+      checklistItems: normalizeChecklistItems(input.checklistItems),
+    }
+  }
+  return { kind: 'text', title, body: normalizeField(input.body), checklistItems: null }
+}
+
 /**
  * Upsert this device's draft and queue one outbox row.
  * A draft may exist before the note row: the note is created only when a version is cut.
  * An identical draft does not queue another row.
  */
-export async function saveDraft(
-  db: TracepadDatabase,
-  input: {
-    noteId: Uuid
-    deviceId: Uuid
-    baseVersionId: Uuid | null
-    title: string | null
-    body: string | null
-    now?: IsoTimestamp
-  },
-): Promise<void> {
-  const text = normalizeNoteText({ title: input.title, body: input.body })
+export async function saveDraft(db: TracepadDatabase, input: SaveDraftInput): Promise<void> {
+  const stored = draftFields(input)
   const tx = db.transaction(['drafts', 'outbox'], 'readwrite')
   const drafts = tx.objectStore('drafts')
   const outbox = tx.objectStore('outbox')
@@ -277,9 +311,10 @@ export async function saveDraft(
     if (
       existing &&
       existing.baseVersionId === input.baseVersionId &&
-      existing.title === text.title &&
-      existing.body === text.body &&
-      existing.kind === 'text'
+      existing.kind === stored.kind &&
+      existing.title === stored.title &&
+      existing.body === stored.body &&
+      sameStoredItems(existing.checklistItems, stored.checklistItems)
     ) {
       return
     }
@@ -287,10 +322,10 @@ export async function saveDraft(
       noteId: input.noteId,
       deviceId: input.deviceId,
       baseVersionId: input.baseVersionId,
-      kind: 'text',
-      title: text.title,
-      body: text.body,
-      checklistItems: null,
+      kind: stored.kind,
+      title: stored.title,
+      body: stored.body,
+      checklistItems: stored.checklistItems,
       updatedAt: nowStamp(input.now),
     }
     await drafts.put(draft)
@@ -334,18 +369,43 @@ export async function clearDraft(
  * Discard, keep, or cut a version. A cut writes the version, the note's current pointer,
  * and one outbox row in the same transaction, and drops this device's draft.
  */
-export async function commitNoteText(
+export function commitNoteText(
   db: TracepadDatabase,
   input: {
     noteId: Uuid
     deviceId: Uuid
     openedVersionId: Uuid | null
-    opened: NoteText
-    next: NoteText
+    opened: { title: string | null; body: string | null }
+    next: { title: string | null; body: string | null }
     now?: IsoTimestamp
   },
 ): Promise<CommitResult> {
-  const decision = decideVersionCut({
+  return commitNoteContent(db, {
+    noteId: input.noteId,
+    deviceId: input.deviceId,
+    openedVersionId: input.openedVersionId,
+    opened: { kind: 'text', title: input.opened.title, body: input.opened.body },
+    next: { kind: 'text', title: input.next.title, body: input.next.body },
+    now: input.now,
+  })
+}
+
+/**
+ * Leave the note, press Ctrl+S, or convert between text and a checklist.
+ * A kind change cuts a version. Item edits cut one only when this is called.
+ */
+export async function commitNoteContent(
+  db: TracepadDatabase,
+  input: {
+    noteId: Uuid
+    deviceId: Uuid
+    openedVersionId: Uuid | null
+    opened: NoteContent
+    next: NoteContent
+    now?: IsoTimestamp
+  },
+): Promise<CommitResult> {
+  const decision = decideContentCut({
     openedVersionId: input.openedVersionId,
     opened: input.opened,
     next: input.next,
@@ -364,7 +424,7 @@ export async function commitNoteText(
     noteId: input.noteId,
     deviceId: input.deviceId,
     parentVersionId: decision.parentVersionId,
-    text: normalizeNoteText(input.next),
+    content: input.next,
     now: nowStamp(input.now),
     versionId: crypto.randomUUID(),
   })
@@ -401,23 +461,37 @@ async function commitLeftoverDrafts(db: TracepadDatabase): Promise<void> {
   const deviceId = await ensureDeviceId(db)
   const drafts = await db.getAllFromIndex('drafts', 'byDeviceId', deviceId)
   for (const draft of drafts) {
-    const opened = await openedText(db, draft.baseVersionId)
-    await commitNoteText(db, {
+    const opened = await openedContent(db, draft.baseVersionId)
+    await commitNoteContent(db, {
       noteId: draft.noteId,
       deviceId,
       openedVersionId: draft.baseVersionId,
       opened,
-      next: { title: draft.title, body: draft.body },
+      next: contentOfDraft(draft),
     })
   }
 }
 
 /** The version the draft started from. A new note has none, so the opened text is empty. */
-async function openedText(db: TracepadDatabase, versionId: Uuid | null): Promise<NoteText> {
-  if (versionId == null) return { title: null, body: null }
+async function openedContent(db: TracepadDatabase, versionId: Uuid | null): Promise<NoteContent> {
+  if (versionId == null) return { kind: 'text', title: null, body: null }
   const version = await db.get('noteVersions', versionId)
-  if (!version) return { title: null, body: null }
-  return { title: version.title, body: version.body }
+  return contentOfVersion(version)
+}
+
+function contentOfVersion(version: NoteVersion | undefined): NoteContent {
+  if (!version) return { kind: 'text', title: null, body: null }
+  if (version.kind === 'checklist') {
+    return { kind: 'checklist', title: version.title, items: version.checklistItems ?? [] }
+  }
+  return { kind: 'text', title: version.title, body: version.body }
+}
+
+function contentOfDraft(draft: Draft): NoteContent {
+  if (draft.kind === 'checklist') {
+    return { kind: 'checklist', title: draft.title, items: draft.checklistItems ?? [] }
+  }
+  return { kind: 'text', title: draft.title, body: draft.body }
 }
 
 async function discardUnsaved(db: TracepadDatabase, noteId: Uuid, deviceId: Uuid): Promise<void> {
@@ -436,6 +510,19 @@ async function discardUnsaved(db: TracepadDatabase, noteId: Uuid, deviceId: Uuid
   await finishTransaction(writing, tx.done)
 }
 
+function storedContent(content: NoteContent): Pick<NoteVersion, 'kind' | 'title' | 'body' | 'checklistItems'> {
+  if (content.kind === 'checklist') {
+    return {
+      kind: 'checklist',
+      title: normalizeField(content.title),
+      body: null,
+      checklistItems: normalizeChecklistItems(content.items),
+    }
+  }
+  const text = normalizeNoteText(content)
+  return { kind: 'text', title: text.title, body: text.body, checklistItems: null }
+}
+
 /**
  * Write the version, point the note at it, remove this device's draft, and queue one version row.
  * The draft delete is local: the version row is the outbox record for this save.
@@ -446,7 +533,7 @@ async function cutVersion(
     noteId: Uuid
     deviceId: Uuid
     parentVersionId: Uuid | null
-    text: NoteText
+    content: NoteContent
     now: IsoTimestamp
     versionId: Uuid
   },
@@ -459,15 +546,16 @@ async function cutVersion(
 
   const writing = (async () => {
     const existing = await notes.get(input.noteId)
+    const stored = storedContent(input.content)
     const version: NoteVersion = {
       id: input.versionId,
       noteId: input.noteId,
       parentVersionId: input.parentVersionId,
       deviceId: input.deviceId,
-      kind: 'text',
-      title: input.text.title,
-      body: input.text.body,
-      checklistItems: null,
+      kind: stored.kind,
+      title: stored.title,
+      body: stored.body,
+      checklistItems: stored.checklistItems,
       createdAt: input.now,
       receivedAt: null,
     }
@@ -590,6 +678,60 @@ export async function setNoteColor(
     const note: Note = { ...existing, color: input.color }
     await tx.objectStore('notes').put(note)
     await tx.objectStore('outbox').put(pendingRow('note', note.id, 'update', note, now, note.userId))
+    changed = true
+  })()
+  await finishTransaction(writing, tx.done)
+  return changed
+}
+
+/** Ticks for one note. A missing row means the item is unticked. */
+export async function listChecklistTicks(db: TracepadDatabase, noteId: Uuid): Promise<ChecklistTick[]> {
+  return db.getAll('checklistTicks', IDBKeyRange.bound([noteId, ''], [noteId, '\uffff']))
+}
+
+/**
+ * Tick or untick one item. The tick lives on the note, so this cuts no version.
+ * Same transaction: the tick, one history entry, and one tick outbox row.
+ * A tick has no single id. The outbox entity id is the note, and the payload carries both ids.
+ * Already in that state, or a missing note, is left alone.
+ */
+export async function setChecklistTick(
+  db: TracepadDatabase,
+  input: {
+    noteId: Uuid
+    itemId: Uuid
+    ticked: boolean
+    deviceId: Uuid
+    now?: IsoTimestamp
+  },
+): Promise<boolean> {
+  const now = nowStamp(input.now)
+  const tx = db.transaction(['notes', 'checklistTicks', 'historyEvents', 'outbox'], 'readwrite')
+  let changed = false
+  const writing = (async () => {
+    const note = await tx.objectStore('notes').get(input.noteId)
+    if (!note) return
+    const existing = await tx.objectStore('checklistTicks').get([input.noteId, input.itemId])
+    if (existing ? existing.ticked === input.ticked : !input.ticked) return
+    const tick: ChecklistTick = {
+      noteId: input.noteId,
+      itemId: input.itemId,
+      ticked: input.ticked,
+      updatedAt: now,
+    }
+    const event: HistoryEvent = {
+      id: crypto.randomUUID(),
+      noteId: note.id,
+      deviceId: input.deviceId,
+      type: input.ticked ? 'ticked' : 'unticked',
+      payload: { itemId: input.itemId },
+      occurredAt: now,
+    }
+    await tx.objectStore('checklistTicks').put(tick)
+    await tx.objectStore('historyEvents').put(event)
+    await tx.objectStore('outbox').put(
+      pendingRow('tick', note.id, existing ? 'update' : 'create', tick, now, note.userId),
+    )
     changed = true
   })()
   await finishTransaction(writing, tx.done)

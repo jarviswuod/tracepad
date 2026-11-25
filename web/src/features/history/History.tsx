@@ -117,7 +117,7 @@ export function HistoryPage({
   return (
     <BoardShell labels={labels} view={null} onView={onView}>
       <h2 className="take-note history-title">
-        {cardHeading(listed?.version.title ?? null, listed?.version.body ?? null)}
+        {cardHeading(listed?.version.title ?? null, listed ? versionText(listed.version).body : null)}
       </h2>
       <div className="board-toolbar">
         {backToNote}

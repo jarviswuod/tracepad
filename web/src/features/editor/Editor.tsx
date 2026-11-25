@@ -1,9 +1,16 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { TracepadDatabase } from '../../data/db'
-import { clearDraft, commitNoteText, saveDraft } from '../../data/notes'
+import { clearDraft, commitNoteContent, listChecklistTicks, saveDraft, setChecklistTick } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
-import type { NoteVersion, Uuid } from '../../domain/types'
-import { isUnchangedText } from '../../domain/versioning'
+import type { ChecklistItem, NoteKind, NoteVersion, Uuid } from '../../domain/types'
+import {
+  checklistDisplayOrder,
+  checklistItemsToBody,
+  isUnchangedContent,
+  normalizeChecklistItems,
+  textToChecklistItems,
+  type NoteContent,
+} from '../../domain/versioning'
 import { SavingDot, savingDotState } from './SavingDot'
 
 /** Wait this long after the last keystroke, then save a draft. */
@@ -44,15 +51,57 @@ type EditorProps = {
   ref?: Ref<EditorHandle>
 }
 
-type Opened = {
-  id: Uuid | null
+type Snapshot = {
+  kind: NoteKind
   title: string
   body: string
+  items: ChecklistItem[]
 }
 
-type EditorText = {
-  title: string
-  body: string
+type Opened = Snapshot & {
+  id: Uuid | null
+}
+
+function snapshotFrom(version: NoteVersion | null): Opened {
+  if (version?.kind === 'checklist') {
+    return {
+      id: version.id,
+      kind: 'checklist',
+      title: version.title ?? '',
+      body: '',
+      items: version.checklistItems ?? [],
+    }
+  }
+  return {
+    id: version?.id ?? null,
+    kind: 'text',
+    title: version?.title ?? '',
+    body: version?.body ?? '',
+    items: [],
+  }
+}
+
+function toContent(snapshot: Snapshot): NoteContent {
+  if (snapshot.kind === 'checklist') {
+    return { kind: 'checklist', title: snapshot.title, items: snapshot.items }
+  }
+  return { kind: 'text', title: snapshot.title, body: snapshot.body }
+}
+
+function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
+  if (a.kind !== b.kind || a.title !== b.title) return false
+  if (a.kind === 'text') return a.body === b.body
+  if (a.items.length !== b.items.length) return false
+  return a.items.every(
+    (item, index) =>
+      item.id === b.items[index].id &&
+      item.text === b.items[index].text &&
+      item.position === b.items[index].position,
+  )
+}
+
+function itemName(item: ChecklistItem, index: number): string {
+  return item.text === '' ? String(index + 1) : item.text
 }
 
 export function Editor({
@@ -71,21 +120,25 @@ export function Editor({
   expandBody = false,
   ref,
 }: EditorProps) {
-  // Title and body live here. Draft saves and outbox checks never write them back.
-  const [title, setTitle] = useState(openedVersion?.title ?? '')
-  const [body, setBody] = useState(openedVersion?.body ?? '')
+  const initial = snapshotFrom(openedVersion)
+  // Title, body, and items live here. Draft saves and outbox checks never write them back.
+  const [title, setTitle] = useState(initial.title)
+  const [body, setBody] = useState(initial.body)
+  const [kind, setKind] = useState(initial.kind)
+  const [items, setItems] = useState(initial.items)
+  const [ticked, setTicked] = useState<ReadonlySet<Uuid>>(() => new Set())
   const [unsaved, setUnsaved] = useState(false)
   const [pendingSync, setPendingSync] = useState(false)
 
-  const textRef = useRef<EditorText>({ title, body })
-  textRef.current = { title, body }
+  const contentRef = useRef<Snapshot>({
+    kind: initial.kind,
+    title: initial.title,
+    body: initial.body,
+    items: initial.items,
+  })
   // The ref is the source of truth for "what we opened". Rendering must not copy
   // state back over it, or a version cut during this turn would be forgotten.
-  const openedRef = useRef<Opened>({
-    id: openedVersion?.id ?? null,
-    title: openedVersion?.title ?? '',
-    body: openedVersion?.body ?? '',
-  })
+  const openedRef = useRef<Opened>(initial)
   const onLeftRef = useRef(onLeft)
   onLeftRef.current = onLeft
   const onHistoryRef = useRef(onHistory)
@@ -102,6 +155,7 @@ export function Editor({
   const closing = useRef<Promise<void> | null>(null)
   const pendingTicket = useRef(0)
   const alive = useRef(true)
+  const ticksReady = useRef(false)
 
   function applyPending(pending: boolean, ticket: number) {
     if (!alive.current || ticket !== pendingTicket.current) return
@@ -113,13 +167,20 @@ export function Editor({
     void noteHasPendingOutbox(db, noteId).then((pending) => applyPending(pending, ticket))
   }
 
-  async function settleIndicator(snapshot: EditorText) {
+  function applyContent(next: Snapshot) {
+    contentRef.current = next
+    setKind(next.kind)
+    setTitle(next.title)
+    setBody(next.body)
+    setItems(next.items)
+  }
+
+  async function settleIndicator(snapshot: Snapshot) {
     const ticket = ++pendingTicket.current
     const pending = await noteHasPendingOutbox(db, noteId)
     applyPending(pending, ticket)
     if (!alive.current) return
-    const current = textRef.current
-    if (current.title === snapshot.title && current.body === snapshot.body) setUnsaved(false)
+    if (sameSnapshot(contentRef.current, snapshot)) setUnsaved(false)
   }
 
   function enqueue<T>(task: () => Promise<T>): Promise<T> {
@@ -147,35 +208,44 @@ export function Editor({
   }
 
   async function autosave() {
-    const text = textRef.current
+    const current = contentRef.current
     const base = openedRef.current
-    if (isUnchangedText(base, text)) {
+    if (isUnchangedContent(toContent(base), toContent(current))) {
       await clearDraft(db, noteId, deviceId)
+    } else if (current.kind === 'checklist') {
+      await saveDraft(db, {
+        noteId,
+        deviceId,
+        baseVersionId: base.id,
+        kind: 'checklist',
+        title: current.title,
+        checklistItems: current.items,
+      })
     } else {
       await saveDraft(db, {
         noteId,
         deviceId,
         baseVersionId: base.id,
-        title: text.title,
-        body: text.body,
+        title: current.title,
+        body: current.body,
       })
     }
-    await settleIndicator(text)
+    await settleIndicator(current)
   }
 
-  async function cutSnapshot(snapshotTitle: string, snapshotBody: string) {
+  async function cutSnapshot(snapshot: Snapshot) {
     const base = openedRef.current
-    const result = await commitNoteText(db, {
+    const result = await commitNoteContent(db, {
       noteId,
       deviceId,
       openedVersionId: base.id,
-      opened: { title: base.title, body: base.body },
-      next: { title: snapshotTitle, body: snapshotBody },
+      opened: toContent(base),
+      next: toContent(snapshot),
     })
     if (result.kind === 'cut') {
-      openedRef.current = { id: result.versionId, title: snapshotTitle, body: snapshotBody }
+      openedRef.current = { ...snapshot, id: result.versionId }
     }
-    await settleIndicator({ title: snapshotTitle, body: snapshotBody })
+    await settleIndicator(snapshot)
     return result
   }
 
@@ -185,10 +255,9 @@ export function Editor({
       let guard = 0
       while (guard < 5) {
         guard += 1
-        const snapshot = textRef.current
-        await cutSnapshot(snapshot.title, snapshot.body)
-        const latest = textRef.current
-        if (latest.title === snapshot.title && latest.body === snapshot.body) return
+        const snapshot = contentRef.current
+        await cutSnapshot(snapshot)
+        if (sameSnapshot(contentRef.current, snapshot)) return
       }
     })
   }
@@ -230,6 +299,18 @@ export function Editor({
   }, [db, noteId])
 
   useEffect(() => {
+    let active = true
+    void listChecklistTicks(db, noteId).then((rows) => {
+      if (!active || ticksReady.current) return
+      ticksReady.current = true
+      setTicked(new Set(rows.filter((row) => row.ticked).map((row) => row.itemId)))
+    })
+    return () => {
+      active = false
+    }
+  }, [db, noteId])
+
+  useEffect(() => {
     function onPressOutside(event: Event) {
       const target = event.target
       // The control that opened the editor may already be gone by the time the
@@ -247,8 +328,8 @@ export function Editor({
       if (!event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return
       event.preventDefault()
       clearTimer()
-      const snapshot = textRef.current
-      void enqueue(() => cutSnapshot(snapshot.title, snapshot.body))
+      const snapshot = contentRef.current
+      void enqueue(() => cutSnapshot(snapshot))
     }
 
     document.addEventListener('pointerdown', onPressOutside)
@@ -265,23 +346,132 @@ export function Editor({
 
   useLayoutEffect(() => {
     const element = bodyRef.current
-    if (!element || !expandBody) return
+    if (!element || !expandBody || kind !== 'text') return
     element.style.height = 'auto'
     if (element.scrollHeight > 0) element.style.height = `${element.scrollHeight}px`
-  }, [body, expandBody])
+  }, [body, expandBody, kind])
 
   function changeTitle(value: string) {
-    textRef.current = { ...textRef.current, title: value }
+    contentRef.current = { ...contentRef.current, title: value }
     setTitle(value)
     setUnsaved(true)
     scheduleDraft()
   }
 
   function changeBody(value: string) {
-    textRef.current = { ...textRef.current, body: value }
+    contentRef.current = { ...contentRef.current, body: value }
     setBody(value)
     setUnsaved(true)
     scheduleDraft()
+  }
+
+  function updateItems(next: ChecklistItem[]) {
+    contentRef.current = { ...contentRef.current, items: next }
+    setItems(next)
+    setUnsaved(true)
+    scheduleDraft()
+  }
+
+  function changeItem(itemId: Uuid, value: string) {
+    updateItems(contentRef.current.items.map((item) => (item.id === itemId ? { ...item, text: value } : item)))
+  }
+
+  function addItem() {
+    const current = contentRef.current.items
+    const position = current.reduce((max, item) => Math.max(max, item.position), -1) + 1
+    updateItems([...current, { id: crypto.randomUUID(), text: '', position }])
+  }
+
+  function removeItem(itemId: Uuid) {
+    updateItems(contentRef.current.items.filter((item) => item.id !== itemId))
+  }
+
+  function moveItem(itemId: Uuid, direction: -1 | 1) {
+    const ordered = normalizeChecklistItems(contentRef.current.items)
+    const group = ordered.filter((item) => ticked.has(item.id) === ticked.has(itemId))
+    const index = group.findIndex((item) => item.id === itemId)
+    const neighbor = group[index + direction]
+    if (index < 0 || !neighbor) return
+    const moving = group[index]
+    const stored = new Map(contentRef.current.items.map((item) => [item.id, item.position]))
+    const movingPos = stored.get(moving.id)
+    const neighborPos = stored.get(neighbor.id)
+    if (movingPos == null || neighborPos == null) return
+    updateItems(
+      contentRef.current.items.map((item) => {
+        if (item.id === moving.id) return { ...item, position: neighborPos }
+        if (item.id === neighbor.id) return { ...item, position: movingPos }
+        return item
+      }),
+    )
+  }
+
+  function toggleTick(itemId: Uuid, nextTicked: boolean) {
+    void enqueue(async () => {
+      if (openedRef.current.id == null) {
+        const snapshot = contentRef.current
+        await cutSnapshot(snapshot)
+        if (openedRef.current.id == null) return
+        if (!contentRef.current.items.some((item) => item.id === itemId)) return
+      }
+      const changed = await setChecklistTick(db, {
+        noteId,
+        itemId,
+        ticked: nextTicked,
+        deviceId,
+      })
+      if (!changed || !alive.current) return
+      ticksReady.current = true
+      setTicked((current) => {
+        const next = new Set(current)
+        if (nextTicked) next.add(itemId)
+        else next.delete(itemId)
+        return next
+      })
+      requestPending()
+    })
+  }
+
+  function convert() {
+    clearTimer()
+    void enqueue(async () => {
+      let guard = 0
+      while (guard < 5) {
+        guard += 1
+        const current = contentRef.current
+        const next: Snapshot =
+          current.kind === 'text'
+            ? {
+                kind: 'checklist',
+                title: current.title,
+                body: '',
+                items: textToChecklistItems(current.body, () => crypto.randomUUID()),
+              }
+            : {
+                kind: 'text',
+                title: current.title,
+                body: checklistItemsToBody(current.items) ?? '',
+                items: [],
+              }
+        const result = await commitNoteContent(db, {
+          noteId,
+          deviceId,
+          openedVersionId: openedRef.current.id,
+          opened: toContent(openedRef.current),
+          next: toContent(next),
+        })
+        if (result.kind === 'cut') {
+          openedRef.current = { ...next, id: result.versionId }
+        }
+        if (!sameSnapshot(contentRef.current, current)) continue
+        if (result.kind === 'discard') {
+          openedRef.current = { ...next, id: null }
+        }
+        applyContent(next)
+        await settleIndicator(next)
+        return
+      }
+    })
   }
 
   const titleField = (
@@ -294,6 +484,9 @@ export function Editor({
     />
   )
 
+  const shown = checklistDisplayOrder(items, ticked)
+  const openCount = shown.filter((item) => !ticked.has(item.id)).length
+
   return (
     <div className="editor" ref={cardRef} role="group" aria-label="Note">
       <SavingDot state={savingDotState(unsaved, pendingSync)} />
@@ -305,31 +498,87 @@ export function Editor({
       ) : (
         titleField
       )}
-      <textarea
-        ref={bodyRef}
-        className={expandBody ? 'editor-body-expand' : undefined}
-        aria-label="Body"
-        placeholder="Take a note"
-        value={body}
-        onChange={(event) => changeBody(event.target.value)}
-      />
-      {actions}
-      {showFooter ? (
-        <div className="editor-actions">
-          {trashed ? (
-            <button type="button" onClick={() => void onRestoreRef.current?.()}>
-              Restore
-            </button>
-          ) : (
-            <button type="button" onClick={() => void onTrashRef.current()}>
-              Move to trash
-            </button>
-          )}
-          <button type="button" onClick={openHistory}>
-            History
+      {kind === 'checklist' ? (
+        <>
+          <ul className="checklist" aria-label="Checklist">
+            {shown.map((item, index) => {
+              const done = ticked.has(item.id)
+              const name = itemName(item, index)
+              const groupStart = done ? openCount : 0
+              const groupEnd = done ? shown.length : openCount
+              return (
+                <li key={item.id} className={done ? 'checklist-item is-ticked' : 'checklist-item'}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Tick ${name}`}
+                    checked={done}
+                    onChange={(event) => toggleTick(item.id, event.target.checked)}
+                  />
+                  <input
+                    className={done ? 'checklist-text is-ticked' : 'checklist-text'}
+                    aria-label={`Item ${name}`}
+                    value={item.text}
+                    onChange={(event) => changeItem(item.id, event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Move ${name} up`}
+                    disabled={index === groupStart}
+                    onClick={() => moveItem(item.id, -1)}
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${name} down`}
+                    disabled={index === groupEnd - 1}
+                    onClick={() => moveItem(item.id, 1)}
+                  >
+                    Down
+                  </button>
+                  <button type="button" aria-label={`Remove ${name}`} onClick={() => removeItem(item.id)}>
+                    Remove
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <button type="button" className="checklist-add" onClick={addItem}>
+            Add item
           </button>
-        </div>
-      ) : null}
+        </>
+      ) : (
+        <textarea
+          ref={bodyRef}
+          className={expandBody ? 'editor-body-expand' : undefined}
+          aria-label="Body"
+          placeholder="Take a note"
+          value={body}
+          onChange={(event) => changeBody(event.target.value)}
+        />
+      )}
+      {actions}
+      <div className="editor-actions">
+        <button type="button" className="editor-checklist-toggle" onClick={convert}>
+          {kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
+        </button>
+        {showFooter ? (
+          <>
+            {trashed ? (
+              <button type="button" onClick={() => void onRestoreRef.current?.()}>
+                Restore
+              </button>
+            ) : (
+              <button type="button" onClick={() => void onTrashRef.current()}>
+                Move to trash
+              </button>
+            )}
+            <button type="button" onClick={openHistory}>
+              History
+            </button>
+          </>
+        ) : null}
+      </div>
     </div>
   )
 }

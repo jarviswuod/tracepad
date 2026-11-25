@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
+import { displayedBody } from '../../domain/versioning'
 import { LabelSection } from '../labels/LabelSection'
 import './board.css'
 
@@ -76,7 +77,7 @@ export function NoteCard({
   children?: ReactNode
 }) {
   const title = card.version.title
-  const preview = card.version.body
+  const preview = displayedBody(card.version)
   return (
     <li style={open ? { visibility: 'hidden' } : undefined}>
       <button
@@ -216,7 +217,7 @@ export function Board({
   const showGroups = view.kind !== 'trash' && pinned.length > 0
 
   function renderCard(card: BoardCard) {
-    const heading = cardLabel(card.version.title, card.version.body)
+    const heading = cardLabel(card.version.title, displayedBody(card.version))
     return (
       <NoteCard
         key={card.note.id}

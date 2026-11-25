@@ -3,6 +3,7 @@
 
 import { diffWords } from 'diff'
 import type { NoteVersion } from '../../domain/types'
+import { displayedBody } from '../../domain/versioning'
 
 export type DiffMark = 'same' | 'added' | 'removed'
 
@@ -17,14 +18,7 @@ export type SideBySideDiff = {
 }
 
 export function versionText(version: NoteVersion): { title: string; body: string } {
-  const title = version.title ?? ''
-  if (version.kind === 'checklist') {
-    const items = [...(version.checklistItems ?? [])].sort(
-      (a, b) => a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-    return { title, body: items.map((item) => item.text).join('\n') }
-  }
-  return { title, body: version.body ?? '' }
+  return { title: version.title ?? '', body: displayedBody(version) ?? '' }
 }
 
 /** Older on the left, newer on the right, by the version's own time. */

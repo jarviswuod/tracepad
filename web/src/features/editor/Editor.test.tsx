@@ -128,6 +128,81 @@ describe('editor', () => {
     expect((await db.get('notes', noteId))?.currentVersionId).toBe(stored[1].id)
   })
 
+  it('turns lines into items, ticks one to the bottom, and cuts no version for the tick', async () => {
+    const db = await open()
+    await renderHome(db)
+    const { title, body } = await startNote()
+    fireEvent.change(title, { target: { value: 'Shopping' } })
+    fireEvent.change(body, { target: { value: 'Milk\nBread' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show checkboxes' }))
+
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Tick Milk' })).toBeInTheDocument())
+    expect(screen.queryByLabelText('Body')).not.toBeInTheDocument()
+    const converted = await versions(db)
+    expect(converted).toHaveLength(1)
+    expect(converted[0].kind).toBe('checklist')
+    expect(converted[0].checklistItems?.map((item) => item.text)).toEqual(['Milk', 'Bread'])
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tick Milk' }))
+    await waitFor(() => {
+      expect(screen.getAllByRole('checkbox').map((box) => box.getAttribute('aria-label'))).toEqual([
+        'Tick Bread',
+        'Tick Milk',
+      ])
+    })
+    expect(screen.getByRole('textbox', { name: 'Item Milk' })).toHaveClass('is-ticked')
+    expect(screen.getByRole('textbox', { name: 'Item Bread' })).not.toHaveClass('is-ticked')
+    expect(await db.count('noteVersions')).toBe(1)
+    expect((await db.getAll('historyEvents')).map((event) => event.type)).toEqual(['ticked'])
+    expect((await db.getAll('checklistTicks'))[0]).toMatchObject({ ticked: true })
+    expect((await db.getAll('outbox')).some((row) => row.entityType === 'tick' && row.op === 'create')).toBe(true)
+  })
+
+  it('cuts a version on leave when items are added, removed, reworded, or reordered', async () => {
+    const db = await open()
+    await renderHome(db)
+    const { body } = await startNote()
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Shopping' } })
+    fireEvent.change(body, { target: { value: 'Milk\nBread' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show checkboxes' }))
+    await screen.findByRole('checkbox', { name: 'Tick Milk' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item 3' }), { target: { value: 'Eggs' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bread' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move Milk down' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item Milk' }), { target: { value: 'Oat milk' } })
+    leaveNote()
+
+    await screen.findByRole('button', { name: /Shopping/ })
+    const stored = await versions(db)
+    expect(stored).toHaveLength(2)
+    expect(stored[1].parentVersionId).toBe(stored[0].id)
+    expect(stored[1].kind).toBe('checklist')
+    expect(stored[1].checklistItems?.map((item) => item.text)).toEqual(['Eggs', 'Oat milk'])
+  })
+
+  it('turns items back into lines and cuts a version', async () => {
+    const db = await open()
+    await renderHome(db)
+    const { body } = await startNote()
+    fireEvent.change(body, { target: { value: 'Milk\nBread' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show checkboxes' }))
+    await screen.findByRole('checkbox', { name: 'Tick Milk' })
+    fireEvent.click(screen.getByRole('button', { name: 'Hide checkboxes' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Body')).toHaveValue('Milk\nBread'))
+    const stored = await versions(db)
+    expect(stored).toHaveLength(2)
+    expect(stored[0].kind).toBe('checklist')
+    expect(stored[1]).toMatchObject({
+      kind: 'text',
+      parentVersionId: stored[0].id,
+      body: 'Milk\nBread',
+      checklistItems: null,
+    })
+  })
+
   it('discards an empty note and does not version an unchanged open', async () => {
     const db = await open()
     await renderHome(db)
