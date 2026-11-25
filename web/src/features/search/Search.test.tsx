@@ -1,7 +1,9 @@
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Router, UNSAFE_createMemoryHistory, useLocation } from 'react-router-dom'
+import { AppHeader } from '../../app/AppShell'
 import { AppRoutes } from '../../app/AppRoutes'
 import { openTracepadDb, type TracepadDatabase } from '../../data/db'
 import type { Note, NoteVersion } from '../../domain/types'
@@ -61,14 +63,37 @@ async function store(db: TracepadDatabase, row: Note, text: { title: string; bod
   await db.put('notes', row)
 }
 
-async function renderHome(db: TracepadDatabase) {
+async function renderHome(db: TracepadDatabase, path = '/home') {
   render(
-    <MemoryRouter>
-      <h1>Tracepad</h1>
+    <MemoryRouter initialEntries={[path]}>
+      <AppHeader />
       <AppRoutes db={db} />
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByRole('button', { name: 'Take a note' })).toBeEnabled())
+}
+
+type MemoryHistory = ReturnType<typeof UNSAFE_createMemoryHistory>
+
+function HistoryHarness({ history, children }: { history: MemoryHistory; children: ReactNode }) {
+  const [state, setState] = useState({ action: history.action, location: history.location })
+  useLayoutEffect(
+    () =>
+      history.listen((update) => {
+        setState({ action: update.action, location: update.location })
+      }),
+    [history],
+  )
+  return (
+    <Router location={state.location} navigationType={state.action} navigator={history}>
+      {children}
+    </Router>
+  )
+}
+
+function PathProbe() {
+  const location = useLocation()
+  return <div data-testid="path">{`${location.pathname}${location.search}`}</div>
 }
 
 function typeQuery(value: string) {
@@ -76,6 +101,23 @@ function typeQuery(value: string) {
 }
 
 describe('search', () => {
+  it('renders the search box and switch beside Tracepad, and the board has neither', async () => {
+    const db = await open()
+    await renderHome(db)
+
+    const title = screen.getByRole('heading', { level: 1, name: 'Tracepad' })
+    const search = screen.getByRole('searchbox', { name: 'Search' })
+    const archived = screen.getByRole('switch', { name: 'Include archived' })
+    expect(title.parentElement).toContainElement(search)
+    expect(title.nextElementSibling).toContainElement(search)
+    expect(title.nextElementSibling).toContainElement(archived)
+
+    const board = document.querySelector('.notes-home')
+    expect(board).not.toBeNull()
+    expect(within(board as HTMLElement).queryByRole('searchbox', { name: 'Search' })).not.toBeInTheDocument()
+    expect(within(board as HTMLElement).queryByRole('switch', { name: 'Include archived' })).not.toBeInTheDocument()
+  })
+
   it('matches current text, skips trash and old versions, and marks archived notes when the switch is on', async () => {
     const db = await open()
     await store(db, note('market'), { title: 'Market', body: 'Fresh apples' })
@@ -187,5 +229,102 @@ describe('search', () => {
     expect(screen.queryByRole('button', { name: 'Bin, Rotten apples' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Restore Bin, Rotten apples' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Empty trash' })).not.toBeInTheDocument()
+  })
+
+  it('keeps each keystroke on the current page, and keeps the switch in the same address', async () => {
+    const db = await open()
+    await store(db, note('market'), { title: 'Market', body: 'Fresh apples' })
+    const history = UNSAFE_createMemoryHistory({ initialEntries: ['/home'], v5Compat: true })
+    render(
+      <HistoryHarness history={history}>
+        <PathProbe />
+        <AppHeader />
+        <AppRoutes db={db} />
+      </HistoryHarness>,
+    )
+    await screen.findByRole('button', { name: 'Market, Fresh apples' })
+
+    const search = screen.getByRole('searchbox', { name: 'Search' })
+    fireEvent.change(search, { target: { value: 'a' } })
+    fireEvent.change(search, { target: { value: 'ap' } })
+    expect(history.index).toBe(0)
+    expect(history.location.pathname).toBe('/home')
+    expect(history.location.search).toBe('?text=ap')
+    expect(search).toHaveValue('ap')
+    expect(screen.getByRole('button', { name: 'Market, Fresh apples' })).toBeInTheDocument()
+    expect(screen.queryByText('No notes match', { selector: '.empty-state' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Views' })).getByRole('button', { name: 'Archive' }))
+    await waitFor(() => expect(history.location.pathname).toBe('/archive'))
+    expect(history.location.search).toBe('?text=ap')
+    expect(history.index).toBe(1)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Include archived' }))
+    expect(history.location.search).toBe('?text=ap&archived=1')
+    expect(history.index).toBe(1)
+    expect(screen.getByRole('switch', { name: 'Include archived' })).toBeChecked()
+
+    fireEvent.change(search, { target: { value: '' } })
+    expect(history.location.pathname).toBe('/archive')
+    expect(history.location.search).toBe('?archived=1')
+    expect(history.index).toBe(1)
+    expect(search).toHaveValue('')
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Include archived' }))
+    expect(history.location.search).toBe('')
+    expect(history.location.pathname).toBe('/archive')
+    expect(history.index).toBe(1)
+    expect(screen.getByRole('switch', { name: 'Include archived' })).not.toBeChecked()
+  })
+
+  it('reads text and the switch from the address, and stays inside that label', async () => {
+    const db = await open()
+    await store(db, note('market'), { title: 'Market', body: 'Fresh apples' })
+    await store(db, note('pantry', { isArchived: true }), { title: 'Pantry', body: 'Dried apples' })
+    await store(db, note('desk'), { title: 'Desk', body: 'Pencils' })
+    await db.put('labels', { id: 'work', userId: null, name: 'Work', updatedAt: now })
+    await db.put('noteLabels', { noteId: 'pantry', labelId: 'work', isRemoved: false, updatedAt: now })
+
+    render(
+      <MemoryRouter initialEntries={['/label/Work?text=apples&archived=1']}>
+        <AppHeader />
+        <AppRoutes db={db} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('apples')
+    expect(screen.getByRole('switch', { name: 'Include archived' })).toBeChecked()
+    expect(await screen.findByRole('button', { name: 'Pantry, Dried apples' })).toHaveTextContent('Archived')
+    expect(screen.queryByRole('button', { name: 'Market, Fresh apples' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Desk, Pencils' })).not.toBeInTheDocument()
+  })
+
+  it('opens Notes when you type on a history page, and further letters replace that entry', async () => {
+    const db = await open()
+    await store(db, note('market'), { title: 'Market', body: 'Fresh apples' })
+    const history = UNSAFE_createMemoryHistory({ initialEntries: ['/history/market'], v5Compat: true })
+    render(
+      <StrictMode>
+        <HistoryHarness history={history}>
+          <AppHeader />
+          <AppRoutes db={db} />
+        </HistoryHarness>
+      </StrictMode>,
+    )
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Tracepad' })).toBeInTheDocument()
+
+    const search = screen.getByRole('searchbox', { name: 'Search' })
+    fireEvent.change(search, { target: { value: 'a' } })
+    expect(history.location.pathname).toBe('/home')
+    expect(history.location.search).toBe('?text=a')
+    expect(history.index).toBe(1)
+
+    fireEvent.change(search, { target: { value: 'apples' } })
+    expect(history.location.pathname).toBe('/home')
+    expect(history.location.search).toBe('?text=apples')
+    expect(history.index).toBe(1)
+    expect(search).toHaveValue('apples')
+    expect(await screen.findByRole('button', { name: 'Market, Fresh apples' })).toBeInTheDocument()
   })
 })

@@ -27,6 +27,7 @@ import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { labelPath, pathsMatch, viewFromPath } from '../board/viewPath'
 import { searchBoardCards } from '../search/filterBoard'
+import { readSearchQuery } from '../search/searchUrl'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
 import { NoteContentEnd, NotePinButton, NoteToolbar } from '../labels/NoteMeta'
 import { Editor, type EditorHandle } from './Editor'
@@ -60,8 +61,6 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
   const [sources, setSources] = useState<BoardCard[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [includeArchived, setIncludeArchived] = useState(false)
   const [labels, setLabels] = useState<Label[]>([])
   const [activeLabelIds, setActiveLabelIds] = useState<Uuid[]>([])
   const [ready, setReady] = useState(false)
@@ -77,6 +76,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   pathRef.current = location.pathname
   sortRef.current = sort
   const view = viewFromPath(location.pathname, labels) ?? { kind: 'notes' as const }
+  const { text: searchQuery, includeArchived } = readSearchQuery(location.search)
   const request = useRef(0)
   const openedOnArrival = useRef(false)
   const trashing = useRef(false)
@@ -246,7 +246,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
     const nextPath = labelPath(renamed.name)
     if (open && !pathsMatch(location.pathname, nextPath)) {
       setLabels((current) => current.map((label) => (label.id === labelId ? renamed : label)))
-      navigate(nextPath, { replace: true })
+      navigate(`${nextPath}${location.search}`, { replace: true })
       return true
     }
     await refresh()
@@ -257,7 +257,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
     const open = view.kind === 'label' && view.labelId === labelId
     await deleteLabel(db, { labelId, deviceId: await currentDeviceId() })
     if (open) {
-      navigate('/home')
+      navigate(`/home${location.search}`)
       return
     }
     await refresh()
@@ -386,11 +386,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
         onCreateLabel={createFromSidebar}
         onRenameLabel={renameFromSidebar}
         onDeleteLabel={(labelId) => void deleteFromSidebar(labelId)}
-        searchQuery={searchQuery}
-        includeArchived={includeArchived}
         searching={searching}
-        onSearchQuery={setSearchQuery}
-        onIncludeArchived={setIncludeArchived}
       />
       {opened && editor ? (
         <NoteModal

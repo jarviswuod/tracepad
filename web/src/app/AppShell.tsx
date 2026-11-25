@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
 import { startupLocalCleanup } from '../data/notes'
+import { SearchControls } from '../features/search/SearchControls'
 import { AppRoutes } from './AppRoutes'
+import './app.css'
+
+/** The title and the search box, on one line, on every page. */
+export function AppHeader() {
+  return (
+    <header className="top-bar">
+      <h1>Tracepad</h1>
+      <SearchControls />
+    </header>
+  )
+}
 
 export function AppShell() {
   const [db, setDb] = useState<TracepadDatabase | null>(null)
@@ -23,7 +35,7 @@ export function AppShell() {
 
   return (
     <main>
-      <h1>Tracepad</h1>
+      <AppHeader />
       {db ? <AppRoutes db={db} /> : null}
     </main>
   )

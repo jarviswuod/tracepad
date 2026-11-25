@@ -4,7 +4,6 @@ import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
 import { LabelSection } from '../labels/LabelSection'
-import { SearchBar } from '../search/SearchBar'
 import { labelPath, pathsMatch, viewFromPath } from './viewPath'
 import './board.css'
 
@@ -32,11 +31,7 @@ type BoardProps = {
   onCreateLabel: (name: string) => Promise<boolean>
   onRenameLabel: (labelId: Uuid, name: string) => Promise<boolean>
   onDeleteLabel: (labelId: Uuid) => void
-  searchQuery: string
-  includeArchived: boolean
   searching: boolean
-  onSearchQuery: (query: string) => void
-  onIncludeArchived: (include: boolean) => void
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -135,14 +130,14 @@ export function BoardShell({
   children: ReactNode
 }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const view = viewFromPath(pathname, labels)
   const currentLabelId =
     view?.kind === 'label' ? (labels.find((label) => label.id === view.labelId)?.id ?? null) : null
 
   function openPath(path: string) {
     if (pathsMatch(pathname, path)) return
-    navigate(path)
+    navigate(`${path}${search}`)
   }
 
   function openLabel(labelId: Uuid) {
@@ -232,11 +227,7 @@ export function Board({
   onCreateLabel,
   onRenameLabel,
   onDeleteLabel,
-  searchQuery,
-  includeArchived,
   searching,
-  onSearchQuery,
-  onIncludeArchived,
 }: BoardProps) {
   const pinned = cards.filter((card) => card.note.isPinned)
   const others = cards.filter((card) => !card.note.isPinned)
@@ -279,12 +270,6 @@ export function Board({
       onRenameLabel={onRenameLabel}
       onDeleteLabel={onDeleteLabel}
     >
-      <SearchBar
-        query={searchQuery}
-        includeArchived={includeArchived}
-        onQuery={onSearchQuery}
-        onIncludeArchived={onIncludeArchived}
-      />
       {editor ?? (
         <button type="button" className="take-note" onClick={onCreate} disabled={createDisabled}>
           Take a note

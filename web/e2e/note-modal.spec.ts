@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 test('opens a card in a modal without moving the board, and Esc saves the edit', async ({ page }) => {
   test.setTimeout(90_000)
-  await page.setViewportSize({ width: 1280, height: 480 })
+  await page.setViewportSize({ width: 1280, height: 400 })
   await page.goto('/')
   for (const name of ['One', 'Two', 'Three', 'Four', 'Five', 'Six']) {
     await createNote(page, name, `${name} body`)
