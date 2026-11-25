@@ -453,6 +453,7 @@ export function NotesHome({
         labels={labels}
         view={view}
         sort={sort}
+        customBase={customBase}
         layout={layout}
         editor={opened ? null : editor}
         openNoteId={opened?.noteId ?? null}

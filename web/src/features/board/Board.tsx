@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
+import type { BoardCard, BoardSort, BoardView, TimeSort } from '../../data/notes'
+import { groupBoardByDay, type DayGroup } from '../../domain/boardDays'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
 import { IconButton } from '../../ui/icons'
@@ -18,6 +19,8 @@ type BoardProps = {
   labels: Label[]
   view: BoardView
   sort: BoardSort
+  /** Date groups follow this time while Custom is selected. */
+  customBase: TimeSort
   layout: BoardLayout
   /** The inline editor for a new note, shown in place of "Take a note". */
   editor: ReactNode
@@ -216,11 +219,10 @@ function layoutKey(cards: BoardCard[], openNoteId: Uuid | null): string {
     .concat(`#${openNoteId ?? ''}`)
 }
 
-function CardGroup({
-  heading,
-  cards,
+function DayCards({
+  day,
+  packLabel,
   layout,
-  layoutKey: key,
   dragEnabled,
   markArchived,
   inTrash,
@@ -230,10 +232,9 @@ function CardGroup({
   onDeleteForever,
   onReorder,
 }: {
-  heading: string | null
-  cards: BoardCard[]
+  day: DayGroup<BoardCard>
+  packLabel: string
   layout: BoardLayout
-  layoutKey: string
   dragEnabled: boolean
   markArchived: boolean
   inTrash: boolean
@@ -243,8 +244,7 @@ function CardGroup({
   onDeleteForever: (noteId: Uuid) => void
   onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
 }) {
-  if (cards.length === 0) return null
-  const items = cards.map((card) => {
+  const items = day.cards.map((card) => {
     const label = cardLabel(card.version.title, displayedBody(card.version))
     return (
       <NoteCard
@@ -270,14 +270,17 @@ function CardGroup({
   })
   return (
     <>
-      {heading ? (
-        <li className="board-heading">
-          <h2>{heading}</h2>
-        </li>
-      ) : null}
+      <li className="board-heading board-date">
+        <h2>{day.heading}</h2>
+      </li>
       {layout === 'grid' ? (
         <li className="board-pack-row">
-          <NotePack layoutKey={key} dragEnabled={dragEnabled} label={heading ?? 'Notes'} onReorder={onReorder}>
+          <NotePack
+            layoutKey={layoutKey(day.cards, openNoteId)}
+            dragEnabled={dragEnabled}
+            label={packLabel}
+            onReorder={onReorder}
+          >
             {items}
           </NotePack>
         </li>
@@ -288,11 +291,46 @@ function CardGroup({
   )
 }
 
+function DaySection({
+  title,
+  days,
+  packLabel,
+  ...cardProps
+}: {
+  title: string | null
+  days: DayGroup<BoardCard>[]
+  packLabel: string
+  layout: BoardLayout
+  dragEnabled: boolean
+  markArchived: boolean
+  inTrash: boolean
+  openNoteId: Uuid | null
+  onOpen: (noteId: Uuid) => void
+  onRestore: (noteId: Uuid) => void
+  onDeleteForever: (noteId: Uuid) => void
+  onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
+}) {
+  if (days.length === 0) return null
+  return (
+    <>
+      {title ? (
+        <li className="board-heading">
+          <h2>{title}</h2>
+        </li>
+      ) : null}
+      {days.map((day) => (
+        <DayCards key={day.key} day={day} packLabel={packLabel} {...cardProps} />
+      ))}
+    </>
+  )
+}
+
 export function Board({
   cards,
   labels,
   view,
   sort,
+  customBase,
   layout,
   editor,
   openNoteId,
@@ -311,11 +349,10 @@ export function Board({
   searching,
   onReorder,
 }: BoardProps) {
-  const pinned = cards.filter((card) => card.note.isPinned)
-  const others = cards.filter((card) => !card.note.isPinned)
+  const grouped = groupBoardByDay(cards, sort, new Date(), customBase)
   // Trash keeps the pin flag but does not show it. Search is not the trash list.
   const inTrash = view.kind === 'trash' && !searching
-  const showGroups = !inTrash && pinned.length > 0
+  const showGroups = !inTrash && grouped.pinned.length > 0
   // Home and a label bring archived notes in only while the switch is on.
   const markArchived = searching && (view.kind === 'notes' || view.kind === 'label')
   const shared = {
@@ -329,6 +366,28 @@ export function Board({
     onDeleteForever,
     onReorder,
   }
+  // Moving a note to another day remounts its card. Focus follows the new card.
+  const focusedCard = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    function onFocusIn(event: FocusEvent) {
+      const target = event.target
+      if (target instanceof HTMLElement && target.classList.contains('note-card')) {
+        focusedCard.current = target
+      }
+    }
+    document.addEventListener('focusin', onFocusIn)
+    return () => document.removeEventListener('focusin', onFocusIn)
+  }, [])
+  useLayoutEffect(() => {
+    const previous = focusedCard.current
+    if (!previous || previous.isConnected) return
+    const id = previous.getAttribute('data-note-id')
+    if (!id) return
+    const next = document.querySelector<HTMLElement>(`.note-card[data-note-id="${id}"]`)
+    if (!next) return
+    next.focus()
+    focusedCard.current = next
+  })
 
   return (
     <BoardShell
@@ -373,19 +432,18 @@ export function Board({
         data-layout={layout}
         aria-label="Board"
       >
-        {layout === 'grid' && pinned.length > 0 && others.length > 0 ? (
-          <>
-            <CardGroup {...shared} heading={showGroups ? 'Pinned' : null} cards={pinned} layoutKey={layoutKey(pinned, openNoteId)} />
-            <CardGroup {...shared} heading={showGroups ? 'Others' : null} cards={others} layoutKey={layoutKey(others, openNoteId)} />
-          </>
-        ) : showGroups ? (
-          <>
-            <CardGroup {...shared} heading="Pinned" cards={pinned} layoutKey={layoutKey(pinned, openNoteId)} />
-            <CardGroup {...shared} heading="Others" cards={others} layoutKey={layoutKey(others, openNoteId)} />
-          </>
-        ) : (
-          <CardGroup {...shared} heading={null} cards={cards} layoutKey={layoutKey(cards, openNoteId)} />
-        )}
+        <DaySection
+          {...shared}
+          title={showGroups ? 'Pinned' : null}
+          days={grouped.pinned}
+          packLabel={showGroups ? 'Pinned' : 'Notes'}
+        />
+        <DaySection
+          {...shared}
+          title={showGroups ? 'Others' : null}
+          days={grouped.others}
+          packLabel={showGroups ? 'Others' : 'Notes'}
+        />
       </ul>
     </BoardShell>
   )

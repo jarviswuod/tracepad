@@ -287,6 +287,19 @@
   color: #5f6368;
 }
 
+.board-date {
+  width: 100%;
+}
+
+.board-heading.board-date h2 {
+  margin: 1rem 0 0.15rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #202124;
+}
+
 .board-cards > li:not(.board-heading) {
   min-width: 0;
 }
