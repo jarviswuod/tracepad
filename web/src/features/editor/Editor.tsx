@@ -506,6 +506,7 @@ export function Editor({
 
   const titleField = (
     <input
+      className="editor-title"
       aria-label="Title"
       placeholder="Title"
       value={title}

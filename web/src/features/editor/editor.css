@@ -62,9 +62,28 @@
   background: transparent;
 }
 
+.editor input.editor-title {
+  font-size: 1.2rem;
+  font-weight: 500;
+  outline: none;
+}
+
 .editor textarea {
   min-height: 5rem;
   resize: vertical;
+  font-size: 1rem;
+  line-height: 1.5;
+  outline: none;
+}
+
+.editor input.checklist-text {
+  outline: none;
+}
+
+.editor input.editor-title:focus,
+.editor textarea:focus,
+.editor input.checklist-text:focus {
+  outline: none;
 }
 
 .editor textarea.editor-body-expand {

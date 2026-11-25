@@ -14,11 +14,11 @@
 }
 
 .note-open-chip {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   line-height: 1.2;
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 999px;
-  padding: 0.15rem 0.55rem;
+  border: 1px solid rgba(0, 0, 0, 0.38);
+  border-radius: 10px;
+  padding: 4px 8px;
 }
 
 .note-edited {
@@ -76,6 +76,7 @@
   font: inherit;
   color: inherit;
   background: transparent;
+  outline: none;
 }
 
 .note-label-scroll {
@@ -154,7 +155,7 @@
   padding: 0.5rem 1rem;
 }
 
-.note-more-panel[role='menu'] {
+.note-more-panel[role="menu"] {
   min-width: 0;
 }
 
@@ -200,7 +201,7 @@ button.edit-label-delete.icon-button {
   cursor: pointer;
 }
 
-.color-swatch[aria-pressed='true'] {
+.color-swatch[aria-pressed="true"] {
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
 }
@@ -223,6 +224,7 @@ button.edit-label-delete.icon-button {
   font: inherit;
   color: inherit;
   background: transparent;
+  outline: none;
 }
 
 .edit-labels-create button {
@@ -285,6 +287,13 @@ button.edit-label-delete.icon-button {
 
 .edit-label-row input {
   border-bottom: 1px solid #1a73e8;
+  outline: none;
+}
+
+.note-label-field:focus,
+.edit-labels-create input:focus,
+.edit-label-row input:focus {
+  outline: none;
 }
 
 .edit-label-delete {
