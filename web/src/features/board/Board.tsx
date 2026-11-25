@@ -3,6 +3,7 @@ import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
 import { LabelSection } from '../labels/LabelSection'
+import { SearchBar } from '../search/SearchBar'
 import './board.css'
 
 export type BoardLayout = 'grid' | 'list'
@@ -30,6 +31,11 @@ type BoardProps = {
   onCreateLabel: (name: string) => Promise<boolean>
   onRenameLabel: (labelId: Uuid, name: string) => Promise<boolean>
   onDeleteLabel: (labelId: Uuid) => void
+  searchQuery: string
+  includeArchived: boolean
+  searching: boolean
+  onSearchQuery: (query: string) => void
+  onIncludeArchived: (include: boolean) => void
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -68,11 +74,14 @@ export function NoteCard({
   card,
   open = false,
   onOpen,
+  markArchived = false,
   children,
 }: {
   card: BoardCard
   /** Open in a modal. The card keeps its slot but is hidden. */
   open?: boolean
+  /** Search included this archived note, so the card says "Archived". */
+  markArchived?: boolean
   onOpen: () => void
   children?: ReactNode
 }) {
@@ -102,6 +111,7 @@ export function NoteCard({
             ))}
           </span>
         ) : null}
+        {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
         {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
       </button>
       {children}
@@ -210,11 +220,17 @@ export function Board({
   onCreateLabel,
   onRenameLabel,
   onDeleteLabel,
+  searchQuery,
+  includeArchived,
+  searching,
+  onSearchQuery,
+  onIncludeArchived,
 }: BoardProps) {
   const pinned = cards.filter((card) => card.note.isPinned)
   const others = cards.filter((card) => !card.note.isPinned)
-  // Trash keeps the pin flag but does not show it.
-  const showGroups = view.kind !== 'trash' && pinned.length > 0
+  // Trash keeps the pin flag but does not show it. Search is not the trash list.
+  const inTrash = view.kind === 'trash' && !searching
+  const showGroups = !inTrash && pinned.length > 0
 
   function renderCard(card: BoardCard) {
     const heading = cardLabel(card.version.title, displayedBody(card.version))
@@ -223,9 +239,10 @@ export function Board({
         key={card.note.id}
         card={card}
         open={card.note.id === openNoteId}
+        markArchived={searching}
         onOpen={() => onOpen(card.note.id)}
       >
-        {view.kind === 'trash' && card.daysLeft != null ? (
+        {inTrash && card.daysLeft != null ? (
           <div className="trash-actions">
             <button type="button" aria-label={`Restore ${heading}`} onClick={() => onRestore(card.note.id)}>
               Restore
@@ -252,13 +269,19 @@ export function Board({
       onRenameLabel={onRenameLabel}
       onDeleteLabel={onDeleteLabel}
     >
+      <SearchBar
+        query={searchQuery}
+        includeArchived={includeArchived}
+        onQuery={onSearchQuery}
+        onIncludeArchived={onIncludeArchived}
+      />
       {editor ?? (
         <button type="button" className="take-note" onClick={onCreate} disabled={createDisabled}>
           Take a note
         </button>
       )}
       <div className="board-toolbar">
-        {view.kind === 'trash' && cards.some((card) => card.daysLeft != null) ? (
+        {inTrash && cards.some((card) => card.daysLeft != null) ? (
           <button type="button" className="empty-trash" onClick={onEmptyTrash}>
             Empty trash
           </button>
@@ -280,7 +303,7 @@ export function Board({
         <LayoutToggle layout={layout} onLayout={onLayout} />
       </div>
       {ready && cards.length === 0 && editor == null ? (
-        <p className="empty-state">Take a note</p>
+        <p className="empty-state">{searching ? 'No notes match' : 'Take a note'}</p>
       ) : null}
       <ul className="board-cards" data-layout={layout} aria-label="Board">
         {showGroups ? (

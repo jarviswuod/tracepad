@@ -13,6 +13,7 @@ import {
   ensureDeviceId,
   getListedNote,
   listBoard,
+  listSearchSources,
   setArchived,
   setNoteColor,
   setPinned,
@@ -24,6 +25,7 @@ import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '..
 import type { Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
+import { searchBoardCards } from '../search/filterBoard'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
 import { NoteContentEnd, NotePinButton, NoteToolbar } from '../labels/NoteMeta'
 import { Editor, type EditorHandle } from './Editor'
@@ -68,6 +70,9 @@ export function NotesHome({
 }: NotesHomeProps) {
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
+  const [sources, setSources] = useState<BoardCard[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [includeArchived, setIncludeArchived] = useState(false)
   const [labels, setLabels] = useState<Label[]>([])
   const [activeLabelIds, setActiveLabelIds] = useState<Uuid[]>([])
   const [ready, setReady] = useState(false)
@@ -90,14 +95,16 @@ export function NotesHome({
     const ticket = ++request.current
     const openId = openIdRef.current
     try {
-      const [nextCards, nextLabels, nextActive, listedOpen] = await Promise.all([
+      const [nextCards, nextLabels, nextActive, listedOpen, nextSources] = await Promise.all([
         listBoard(db, { view: viewRef.current, sort: sortRef.current }),
         listLabels(db),
         openId ? listActiveLabelIds(db, openId) : Promise.resolve([] as Uuid[]),
         openId ? getListedNote(db, openId) : Promise.resolve(null),
+        listSearchSources(db, sortRef.current),
       ])
       if (ticket !== request.current) return
       setCards(nextCards)
+      setSources(nextSources)
       setLabels(nextLabels)
       setActiveLabelIds(nextActive)
       if (listedOpen) {
@@ -307,6 +314,15 @@ export function NotesHome({
     await refresh()
   }
 
+  const searching = searchQuery.trim() !== ''
+  const shownCards = searching
+    ? searchBoardCards(sources, {
+        query: searchQuery,
+        includeArchived,
+        labelId: view.kind === 'label' ? view.labelId : null,
+      })
+    : cards
+
   const editor =
     session && deviceId ? (
       <Editor
@@ -344,7 +360,7 @@ export function NotesHome({
   return (
     <>
       <Board
-        cards={cards}
+        cards={shownCards}
         labels={labels}
         view={view}
         sort={sort}
@@ -364,6 +380,11 @@ export function NotesHome({
         onCreateLabel={createFromSidebar}
         onRenameLabel={renameFromSidebar}
         onDeleteLabel={(labelId) => void deleteFromSidebar(labelId)}
+        searchQuery={searchQuery}
+        includeArchived={includeArchived}
+        searching={searching}
+        onSearchQuery={setSearchQuery}
+        onIncludeArchived={setIncludeArchived}
       />
       {opened && editor ? (
         <NoteModal

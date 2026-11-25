@@ -218,9 +218,14 @@
   overflow: hidden;
 }
 
-.days-left {
+.days-left,
+.note-archived {
   color: #5f6368;
   font-size: 0.85rem;
+}
+
+.note-archived {
+  font-weight: 600;
 }
 
 .note-chips {

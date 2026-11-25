@@ -262,6 +262,36 @@ export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promis
   return cards
 }
 
+/**
+ * Every note that has a current version, for on-device search.
+ * Archived and trashed notes are included; the search rule decides which to show.
+ * Only the current version is loaded. Older versions stay unread.
+ */
+export async function listSearchSources(db: TracepadDatabase, sort: BoardSort): Promise<BoardCard[]> {
+  const notes =
+    sort === 'created'
+      ? await db.getAllFromIndex('notes', 'byCreatedAt')
+      : await db.getAllFromIndex('notes', 'byUpdatedAt')
+  const storedLabels = await db.getAll('labels')
+  const links = await db.getAll('noteLabels')
+  const chips = chipsByNote(storedLabels, links)
+  const ordered = notes.slice().sort((a, b) => compareBoard(a, b, sort))
+
+  const cards: BoardCard[] = []
+  for (const note of ordered) {
+    if (!note.currentVersionId) continue
+    const version = await db.get('noteVersions', note.currentVersionId)
+    if (!version) continue
+    cards.push({
+      note,
+      version,
+      daysLeft: null,
+      labels: chips.get(note.id) ?? [],
+    })
+  }
+  return cards
+}
+
 type SaveDraftInput = {
   noteId: Uuid
   deviceId: Uuid

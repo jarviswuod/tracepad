@@ -9,7 +9,7 @@ export const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * DAY_MS
 
 /**
  * Trash is a flag. The board hides these notes except in Trash.
- * Search never includes them; that screen is a later task and must use this check.
+ * Search never includes them.
  */
 export function isTrashed(note: { trashedAt: IsoTimestamp | null }): boolean {
   return note.trashedAt != null
