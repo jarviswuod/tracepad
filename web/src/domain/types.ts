@@ -17,6 +17,8 @@ export type Note = {
   isArchived: boolean
   color: string | null
   trashedAt: IsoTimestamp | null
+  /** Custom drag order (`notes.sort_position`). Null keeps the previous order. */
+  sortPosition: number | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
   /** Server receive time; null until the server has accepted the note. */

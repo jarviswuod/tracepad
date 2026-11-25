@@ -50,6 +50,7 @@ function note(overrides: Partial<Note> = {}): Note {
     trashedAt: null,
     createdAt: at(start),
     updatedAt: at(start),
+    sortPosition: null,
     serverUpdatedAt: null,
     ...overrides,
   }

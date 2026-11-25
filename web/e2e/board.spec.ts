@@ -98,9 +98,17 @@ function cardLabels(page: Page): Promise<string[]> {
 
 function columnCount(page: Page): Promise<number> {
   return page.getByRole('list', { name: 'Board' }).evaluate((list) => {
-    return getComputedStyle(list)
-      .gridTemplateColumns.split(' ')
-      .filter((part) => part.length > 0).length
+    if (list.getAttribute('data-layout') === 'list') {
+      return getComputedStyle(list)
+        .gridTemplateColumns.split(' ')
+        .filter((part) => part.length > 0).length
+    }
+    const pack = list.querySelector<HTMLElement>('.board-pack')
+    const item = pack?.querySelector<HTMLElement>('.board-item')
+    if (!pack || !item) return 1
+    const itemWidth = item.getBoundingClientRect().width
+    if (itemWidth <= 0) return 1
+    return Math.max(1, Math.round(pack.clientWidth / itemWidth))
   })
 }
 

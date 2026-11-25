@@ -54,6 +54,7 @@ function note(id: string, overrides: Partial<Note> = {}): Note {
     trashedAt: null,
     createdAt: '2026-11-24T08:00:00.000Z',
     updatedAt: '2026-11-24T08:00:00.000Z',
+    sortPosition: null,
     serverUpdatedAt: null,
     ...overrides,
   }
@@ -143,6 +144,26 @@ describe('openTracepadDb', () => {
     const second = await open(name)
     expect(await second.get('notes', 'note-1')).toEqual(note('note-1'))
     expect((await second.get('localSyncState', 'device-1'))?.bookmark).toBe(0)
+  })
+
+  it('gives existing notes a null sort position when the database is upgraded', async () => {
+    const name = freshName()
+    const first = await openDB(name, 1, {
+      upgrade(db) {
+        const notes = db.createObjectStore('notes', { keyPath: 'id' })
+        notes.createIndex('byUpdatedAt', 'updatedAt')
+        notes.createIndex('byCreatedAt', 'createdAt')
+        notes.createIndex('byTrashedAt', 'trashedAt')
+      },
+    })
+    const stored = note('note-1')
+    const { sortPosition: _sortPosition, ...withoutPosition } = stored
+    await first.put('notes', withoutPosition)
+    first.close()
+
+    const upgraded = await open(name)
+    expect(upgraded.version).toBe(DB_VERSION)
+    expect(await upgraded.get('notes', 'note-1')).toEqual(stored)
   })
 })
 

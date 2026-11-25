@@ -111,6 +111,7 @@ describe('commitNoteText', () => {
       trashedAt: null,
       createdAt: at,
       updatedAt: at,
+      sortPosition: null,
       serverUpdatedAt: null,
     })
     expect(rows).toHaveLength(1)

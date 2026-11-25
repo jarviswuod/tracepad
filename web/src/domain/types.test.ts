@@ -39,6 +39,7 @@ const note = {
   trashedAt: null,
   createdAt: at,
   updatedAt: at,
+  sortPosition: null,
   serverUpdatedAt: null,
 } satisfies Note
 
@@ -173,7 +174,7 @@ function sqlColumns(table: string): string[] {
   return block[1]
     .split('\n')
     .filter((line) => !/^\s*(--|PRIMARY KEY|$)/.test(line))
-    .filter((line) => !/--\s*v2\b/.test(line))
+    .filter((line) => !/--\s*v2\b/.test(line) || /\bsort_position\b/.test(line))
     .filter((line) => /^\s+[a-z_]+\s+[a-z]/.test(line))
     .map((line) => toCamel(line.trim().split(/\s+/)[0]))
 }

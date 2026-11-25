@@ -42,7 +42,7 @@
   padding-left: 2rem;
 }
 
-.side-list button[aria-current='page'] {
+.side-list button[aria-current="page"] {
   background: #e8f0fe;
   font-weight: 600;
 }
@@ -138,7 +138,7 @@
   cursor: pointer;
 }
 
-.layout-toggle button[aria-pressed='true'] {
+.layout-toggle button[aria-pressed="true"] {
   background: #e8f0fe;
 }
 
@@ -151,6 +151,7 @@
 .board-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  grid-template-rows: masonry;
   gap: 0.75rem;
   align-items: start;
   list-style: none;
@@ -158,8 +159,49 @@
   padding: 0;
 }
 
-.board-cards[data-layout='list'] {
+.board-cards[data-layout="list"] {
   grid-template-columns: 1fr;
+}
+
+/* Grid packs are positioned by Muuri. History keeps the plain grid above. */
+.board-cards.board-packs {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.board-pack-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.board-pack {
+  position: relative;
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.board-item {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  width: var(--board-item-width, 100%);
+  margin: 0;
+  padding: 0 0.375rem 0.75rem;
+}
+
+.board-item.muuri-item-dragging {
+  z-index: 3;
+}
+
+.board-item.muuri-item-releasing {
+  z-index: 2;
+}
+
+.board-pack .note-card {
+  min-height: 0;
 }
 
 .board-heading {
@@ -213,7 +255,7 @@
   pointer-events: none;
 }
 
-.board-cards[data-layout='list'] .note-card {
+.board-cards[data-layout="list"] .note-card {
   min-height: 0;
 }
 

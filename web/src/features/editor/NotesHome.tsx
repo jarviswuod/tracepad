@@ -18,13 +18,16 @@ import {
   setArchived,
   setNoteColor,
   setPinned,
+  setSortPosition,
   type BoardCard,
   type BoardSort,
   type BoardView,
+  type TimeSort,
 } from '../../data/notes'
 import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '../../data/trash'
 import type { SearchOptions } from '../../domain/search'
-import type { Label, NoteVersion, Uuid } from '../../domain/types'
+import { sortPositionForDrag } from '../../domain/boardOrder'
+import type { Label, Note, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { labelPath, pathsMatch, viewFromPath } from '../board/viewPath'
@@ -59,6 +62,8 @@ type Session = {
 type NotesHomeProps = {
   db: TracepadDatabase
   sort: BoardSort
+  /** Time order that null sortPositions keep while Custom is selected. */
+  customBase: TimeSort
   layout: BoardLayout
   /** Open this note in the editor on arrival, as "Back to note" from history does. */
   openNoteId: Uuid | null
@@ -67,7 +72,16 @@ type NotesHomeProps = {
   onHistory: (noteId: Uuid) => void
 }
 
-export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHistory }: NotesHomeProps) {
+export function NotesHome({
+  db,
+  sort,
+  customBase,
+  layout,
+  openNoteId,
+  onSort,
+  onLayout,
+  onHistory,
+}: NotesHomeProps) {
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
   const [sources, setSources] = useState<BoardCard[]>([])
@@ -83,8 +97,10 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
   const openIdRef = useRef<Uuid | null>(null)
   const pathRef = useRef(location.pathname)
   const sortRef = useRef(sort)
+  const customBaseRef = useRef(customBase)
   pathRef.current = location.pathname
   sortRef.current = sort
+  customBaseRef.current = customBase
   const view = viewFromPath(location.pathname, labels) ?? { kind: 'notes' as const }
   const { text: searchQuery, includeArchived } = readSearchQuery(location.search)
   const request = useRef(0)
@@ -101,10 +117,10 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
       const nextLabels = await listLabels(db)
       const nextView = viewFromPath(path, nextLabels) ?? { kind: 'notes' as const }
       const [nextCards, nextActive, listedOpen, nextSources] = await Promise.all([
-        listBoard(db, { view: nextView, sort: sortRef.current }),
+        listBoard(db, { view: nextView, sort: sortRef.current, customBase: customBaseRef.current }),
         openId ? listActiveLabelIds(db, openId) : Promise.resolve([] as Uuid[]),
         openId ? getListedNote(db, openId) : Promise.resolve(null),
-        listSearchSources(db, sortRef.current),
+        listSearchSources(db, sortRef.current, customBaseRef.current),
       ])
       if (ticket !== request.current || pathRef.current !== path) return
       setCards(nextCards)
@@ -139,7 +155,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
     setCards([])
     setReady(false)
     void refresh()
-  }, [refresh, location.pathname, sort])
+  }, [refresh, location.pathname, sort, customBase])
 
   async function openNote(noteId: Uuid) {
     await editorRef.current?.leave()
@@ -189,6 +205,23 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
     const id = await ensureDeviceId(db)
     setDeviceId(id)
     return id
+  }
+
+  async function reorder(noteId: Uuid, orderedIds: readonly Uuid[]) {
+    const base = sort === 'custom' ? customBase : sort
+    const byId = new Map(cards.map((card) => [card.note.id, card.note]))
+    const group: Note[] = []
+    for (const id of orderedIds) {
+      const note = byId.get(id)
+      if (!note) return
+      group.push(note)
+    }
+    const position = sortPositionForDrag(group, noteId, orderedIds, base)
+    if (position == null) return
+    const changed = await setSortPosition(db, { noteId, sortPosition: position })
+    if (!changed) return
+    if (sort !== 'custom') onSort('custom')
+    else await refresh()
   }
 
   async function changePin(pinned: boolean) {
@@ -436,6 +469,7 @@ export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHi
         onRenameLabel={renameFromSidebar}
         onDeleteLabel={(labelId) => void deleteFromSidebar(labelId)}
         searching={searching}
+        onReorder={(noteId, orderedIds) => void reorder(noteId, orderedIds)}
       />
       {opened && editor ? (
         <NoteModal

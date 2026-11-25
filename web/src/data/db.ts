@@ -17,7 +17,7 @@ import type {
 } from '../domain/types'
 
 export const DB_NAME = 'tracepad'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 // IndexedDB leaves a row out of an index when any part of its key is null, and
 // booleans are not valid keys. So the schema's (user_id, ...) indexes drop user_id
@@ -89,9 +89,9 @@ export type TracepadDatabase = IDBPDatabase<TracepadDB>
 
 export function openTracepadDb(name: string = DB_NAME): Promise<TracepadDatabase> {
   return openDB<TracepadDB>(name, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    async upgrade(db, oldVersion, _newVersion, transaction) {
       // Each step runs once, in order, from the version the device is on.
-      // Add later steps as `if (oldVersion < 2) { ... }` below; never edit a past step.
+      // Add later steps as `if (oldVersion < 3) { ... }` below; never edit a past step.
       if (oldVersion < 1) {
         const notes = db.createObjectStore('notes', { keyPath: 'id' })
         notes.createIndex('byUpdatedAt', 'updatedAt')
@@ -124,6 +124,17 @@ export function openTracepadDb(name: string = DB_NAME): Promise<TracepadDatabase
         outbox.createIndex('byStatusCreatedAt', ['status', 'createdAt'])
 
         db.createObjectStore('localSyncState', { keyPath: 'deviceId' })
+      }
+      // Notes saved before custom order have no sortPosition. Null keeps their previous order.
+      if (oldVersion < 2 && transaction.objectStoreNames.contains('notes')) {
+        const store = transaction.objectStore('notes')
+        let cursor = await store.openCursor()
+        while (cursor) {
+          if (cursor.value.sortPosition == null) {
+            await cursor.update({ ...cursor.value, sortPosition: null })
+          }
+          cursor = await cursor.continue()
+        }
       }
     },
   })

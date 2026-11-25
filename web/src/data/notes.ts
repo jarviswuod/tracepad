@@ -21,8 +21,11 @@ import type {
   NoteVersion,
   Uuid,
 } from '../domain/types'
+import { orderNotes, type BoardSort, type TimeSort } from '../domain/boardOrder'
 import { queueOutbox } from './outbox'
 import { purgeExpiredTrash } from './trash'
+
+export type { BoardSort, TimeSort }
 
 export type ListedNote = {
   note: Note
@@ -98,8 +101,6 @@ export async function getListedNote(db: TracepadDatabase, noteId: Uuid): Promise
   return { note, version }
 }
 
-export type BoardSort = 'edited' | 'created'
-
 export type BoardView =
   | { kind: 'notes' }
   | { kind: 'reminders' }
@@ -124,6 +125,8 @@ export type BoardQuery = {
   sort: BoardSort
   /** Used for trash days left. Defaults to the current time. */
   now?: IsoTimestamp
+  /** Time order that null sortPositions keep while Custom is selected. */
+  customBase?: TimeSort
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -133,15 +136,6 @@ function daysLeftInTrash(trashedAt: IsoTimestamp, now: IsoTimestamp): number {
   const elapsed = Date.parse(now) - Date.parse(trashedAt)
   if (!Number.isFinite(elapsed) || elapsed <= 0) return TRASH_RETENTION_DAYS
   return Math.max(0, TRASH_RETENTION_DAYS - Math.floor(elapsed / DAY_MS))
-}
-
-function compareBoard(a: Note, b: Note, sort: BoardSort): number {
-  if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
-  const aKey = sort === 'created' ? a.createdAt : a.updatedAt
-  const bKey = sort === 'created' ? b.createdAt : b.updatedAt
-  if (aKey !== bKey) return aKey < bKey ? 1 : -1
-  if (a.id === b.id) return 0
-  return a.id < b.id ? -1 : 1
 }
 
 function inView(
@@ -196,7 +190,7 @@ function notesForView(db: TracepadDatabase, view: BoardView, sort: BoardSort): P
 }
 
 /**
- * Pinned notes first, then recently edited or newest created.
+ * Pinned notes first, then recently edited, newest created, or custom drag order.
  * Notes and Archive hide trash. Archive is archived only.
  * A label includes archived notes. Trash is trashed notes, with days left out of 30.
  * Each card carries its active label chips.
@@ -223,10 +217,10 @@ export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promis
   }
 
   const matching = notes.filter((note) => inView(note, query.view, labelNoteIds, reminderNoteIds))
-  matching.sort((a, b) => compareBoard(a, b, query.sort))
+  const ordered = orderNotes(matching, query.sort, query.customBase ?? 'edited')
 
   const cards: BoardCard[] = []
-  for (const note of matching) {
+  for (const note of ordered) {
     if (!note.currentVersionId) continue
     const version = await db.get('noteVersions', note.currentVersionId)
     if (!version) continue
@@ -245,7 +239,11 @@ export async function listBoard(db: TracepadDatabase, query: BoardQuery): Promis
  * Archived and trashed notes are included; the search rule decides which to show.
  * Only the current version is loaded. Older versions stay unread.
  */
-export async function listSearchSources(db: TracepadDatabase, sort: BoardSort): Promise<BoardCard[]> {
+export async function listSearchSources(
+  db: TracepadDatabase,
+  sort: BoardSort,
+  customBase: TimeSort = 'edited',
+): Promise<BoardCard[]> {
   const notes =
     sort === 'created'
       ? await db.getAllFromIndex('notes', 'byCreatedAt')
@@ -253,7 +251,7 @@ export async function listSearchSources(db: TracepadDatabase, sort: BoardSort): 
   const storedLabels = await db.getAll('labels')
   const links = await db.getAll('noteLabels')
   const chips = chipsByNote(storedLabels, links)
-  const ordered = notes.slice().sort((a, b) => compareBoard(a, b, sort))
+  const ordered = orderNotes(notes, sort, customBase)
 
   const cards: BoardCard[] = []
   for (const note of ordered) {
@@ -578,7 +576,12 @@ async function cutVersion(
       receivedAt: null,
     }
     const note: Note = existing
-      ? { ...existing, currentVersionId: version.id, updatedAt: input.now }
+      ? {
+          ...existing,
+          sortPosition: existing.sortPosition ?? null,
+          currentVersionId: version.id,
+          updatedAt: input.now,
+        }
       : {
           id: input.noteId,
           userId: null,
@@ -587,6 +590,7 @@ async function cutVersion(
           isArchived: false,
           color: null,
           trashedAt: null,
+          sortPosition: null,
           createdAt: input.now,
           updatedAt: input.now,
           serverUpdatedAt: null,
@@ -708,6 +712,37 @@ export async function setNoteColor(
     const existing = await tx.objectStore('notes').get(input.noteId)
     if (!existing || existing.color === input.color) return
     const note: Note = { ...existing, color: input.color }
+    await tx.objectStore('notes').put(note)
+    await queueOutbox(tx.objectStore('outbox'), {
+      entityType: 'note',
+      entityId: note.id,
+      op: 'update',
+      payload: note,
+      createdAt: now,
+      userId: note.userId,
+    })
+    changed = true
+  })()
+  await finishTransaction(writing, tx.done)
+  return changed
+}
+
+/**
+ * Save a custom drag position. One note outbox row. No version, no history entry.
+ * updatedAt stays as it was, so Recently edited does not follow the drag.
+ * The same position, or a missing note, is left alone.
+ */
+export async function setSortPosition(
+  db: TracepadDatabase,
+  input: { noteId: Uuid; sortPosition: number; now?: IsoTimestamp },
+): Promise<boolean> {
+  const now = nowStamp(input.now)
+  const tx = db.transaction(['notes', 'outbox'], 'readwrite')
+  let changed = false
+  const writing = (async () => {
+    const existing = await tx.objectStore('notes').get(input.noteId)
+    if (!existing || existing.sortPosition === input.sortPosition) return
+    const note: Note = { ...existing, sortPosition: input.sortPosition }
     await tx.objectStore('notes').put(note)
     await queueOutbox(tx.objectStore('outbox'), {
       entityType: 'note',

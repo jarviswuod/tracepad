@@ -4,6 +4,7 @@ import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
 import { LabelSection } from '../labels/LabelSection'
+import { NotePack } from './NotePack'
 import { labelPath, pathsMatch, viewFromPath } from './viewPath'
 import './board.css'
 
@@ -32,6 +33,8 @@ type BoardProps = {
   onRenameLabel: (labelId: Uuid, name: string) => Promise<boolean>
   onDeleteLabel: (labelId: Uuid) => void
   searching: boolean
+  /** Grid drag. `orderedIds` is the pack's new order, pinned and others separate. */
+  onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -71,6 +74,7 @@ export function NoteCard({
   open = false,
   onOpen,
   markArchived = false,
+  frame = 'list',
   children,
 }: {
   card: BoardCard
@@ -78,39 +82,52 @@ export function NoteCard({
   open?: boolean
   /** Search included this archived note, so the card says "Archived". */
   markArchived?: boolean
+  /** Grid cards are Muuri items. List and history stay a plain list item. */
+  frame?: 'list' | 'grid'
   onOpen: () => void
   children?: ReactNode
 }) {
   const title = card.version.title
   const preview = displayedBody(card.version)
+  const button = (
+    <button
+      type="button"
+      className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
+      data-note-id={card.note.id}
+      data-pinned={card.note.isPinned ? 'true' : 'false'}
+      data-color={card.note.color ?? 'default'}
+      aria-label={cardLabel(title, preview)}
+      style={{ backgroundColor: card.note.color ?? '#ffffff' }}
+      onClick={onOpen}
+    >
+      {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
+      {title ? <span className="note-title">{title}</span> : null}
+      {preview ? <span className={title ? 'note-preview' : 'note-title'}>{preview}</span> : null}
+      {!title && !preview ? <span className="note-title">{UNTITLED}</span> : null}
+      {card.labels.length > 0 ? (
+        <span className="note-chips">
+          {card.labels.map((label) => (
+            <span key={label.id} className="note-chip">
+              {label.name}
+            </span>
+          ))}
+        </span>
+      ) : null}
+      {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
+      {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
+    </button>
+  )
+  if (frame === 'grid') {
+    return (
+      <li className="board-item" data-note-id={card.note.id} style={open ? { visibility: 'hidden' } : undefined}>
+        {button}
+        {children}
+      </li>
+    )
+  }
   return (
     <li style={open ? { visibility: 'hidden' } : undefined}>
-      <button
-        type="button"
-        className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
-        data-note-id={card.note.id}
-        data-pinned={card.note.isPinned ? 'true' : 'false'}
-        data-color={card.note.color ?? 'default'}
-        aria-label={cardLabel(title, preview)}
-        style={{ backgroundColor: card.note.color ?? '#ffffff' }}
-        onClick={onOpen}
-      >
-        {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
-        {title ? <span className="note-title">{title}</span> : null}
-        {preview ? <span className={title ? 'note-preview' : 'note-title'}>{preview}</span> : null}
-        {!title && !preview ? <span className="note-title">{UNTITLED}</span> : null}
-        {card.labels.length > 0 ? (
-          <span className="note-chips">
-            {card.labels.map((label) => (
-              <span key={label.id} className="note-chip">
-                {label.name}
-              </span>
-            ))}
-          </span>
-        ) : null}
-        {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
-        {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
-      </button>
+      {button}
       {children}
     </li>
   )
@@ -208,6 +225,92 @@ export function LayoutToggle({
   )
 }
 
+function layoutKey(cards: BoardCard[], openNoteId: Uuid | null): string {
+  return cards
+    .map((card) => {
+      const text = displayedBody(card.version) ?? ''
+      return `${card.note.id}:${card.version.title ?? ''}:${text}:${card.labels.length}:${card.daysLeft ?? ''}:${card.note.color ?? ''}`
+    })
+    .join('|')
+    .concat(`#${openNoteId ?? ''}`)
+}
+
+function CardGroup({
+  heading,
+  cards,
+  layout,
+  layoutKey: key,
+  dragEnabled,
+  markArchived,
+  inTrash,
+  openNoteId,
+  onOpen,
+  onRestore,
+  onDeleteForever,
+  onReorder,
+}: {
+  heading: string | null
+  cards: BoardCard[]
+  layout: BoardLayout
+  layoutKey: string
+  dragEnabled: boolean
+  markArchived: boolean
+  inTrash: boolean
+  openNoteId: Uuid | null
+  onOpen: (noteId: Uuid) => void
+  onRestore: (noteId: Uuid) => void
+  onDeleteForever: (noteId: Uuid) => void
+  onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
+}) {
+  if (cards.length === 0) return null
+  const items = cards.map((card) => {
+    const label = cardLabel(card.version.title, displayedBody(card.version))
+    return (
+      <NoteCard
+        key={card.note.id}
+        card={card}
+        frame={layout === 'grid' ? 'grid' : 'list'}
+        open={card.note.id === openNoteId}
+        markArchived={markArchived}
+        onOpen={() => onOpen(card.note.id)}
+      >
+        {inTrash && card.daysLeft != null ? (
+          <div className="trash-actions">
+            <button type="button" aria-label={`Restore ${label}`} onClick={() => onRestore(card.note.id)}>
+              Restore
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete ${label} forever`}
+              onClick={() => onDeleteForever(card.note.id)}
+            >
+              Delete forever
+            </button>
+          </div>
+        ) : null}
+      </NoteCard>
+    )
+  })
+  return (
+    <>
+      {heading ? (
+        <li className="board-heading">
+          <h2>{heading}</h2>
+        </li>
+      ) : null}
+      {layout === 'grid' ? (
+        <li className="board-pack-row">
+          <NotePack layoutKey={key} dragEnabled={dragEnabled} label={heading ?? 'Notes'} onReorder={onReorder}>
+            {items}
+          </NotePack>
+        </li>
+      ) : (
+        items
+      )}
+    </>
+  )
+}
+
 export function Board({
   cards,
   labels,
@@ -229,6 +332,7 @@ export function Board({
   onRenameLabel,
   onDeleteLabel,
   searching,
+  onReorder,
 }: BoardProps) {
   const pinned = cards.filter((card) => card.note.isPinned)
   const others = cards.filter((card) => !card.note.isPinned)
@@ -237,33 +341,16 @@ export function Board({
   const showGroups = !inTrash && pinned.length > 0
   // Home and a label bring archived notes in only while the switch is on.
   const markArchived = searching && (view.kind === 'notes' || view.kind === 'label')
-
-  function renderCard(card: BoardCard) {
-    const heading = cardLabel(card.version.title, displayedBody(card.version))
-    return (
-      <NoteCard
-        key={card.note.id}
-        card={card}
-        open={card.note.id === openNoteId}
-        markArchived={markArchived}
-        onOpen={() => onOpen(card.note.id)}
-      >
-        {inTrash && card.daysLeft != null ? (
-          <div className="trash-actions">
-            <button type="button" aria-label={`Restore ${heading}`} onClick={() => onRestore(card.note.id)}>
-              Restore
-            </button>
-            <button
-              type="button"
-              aria-label={`Delete ${heading} forever`}
-              onClick={() => onDeleteForever(card.note.id)}
-            >
-              Delete forever
-            </button>
-          </div>
-        ) : null}
-      </NoteCard>
-    )
+  const shared = {
+    layout,
+    dragEnabled: !searching,
+    markArchived,
+    inTrash,
+    openNoteId,
+    onOpen,
+    onRestore,
+    onDeleteForever,
+    onReorder,
   }
 
   return (
@@ -291,11 +378,12 @@ export function Board({
             value={sort}
             onChange={(event) => {
               const value = event.target.value
-              if (value === 'edited' || value === 'created') onSort(value)
+              if (value === 'edited' || value === 'created' || value === 'custom') onSort(value)
             }}
           >
             <option value="edited">Recently edited</option>
             <option value="created">Newest created</option>
+            <option value="custom">Custom</option>
           </select>
         </label>
         <LayoutToggle layout={layout} onLayout={onLayout} />
@@ -303,19 +391,24 @@ export function Board({
       {ready && cards.length === 0 && editor == null ? (
         <p className="empty-state">{searching ? 'No notes match' : 'Take a note'}</p>
       ) : null}
-      <ul className="board-cards" data-layout={layout} aria-label="Board">
-        {showGroups ? (
-          <li className="board-heading">
-            <h2>Pinned</h2>
-          </li>
-        ) : null}
-        {(showGroups ? pinned : cards).map((card) => renderCard(card))}
-        {showGroups && others.length > 0 ? (
-          <li className="board-heading">
-            <h2>Others</h2>
-          </li>
-        ) : null}
-        {showGroups ? others.map((card) => renderCard(card)) : null}
+      <ul
+        className={layout === 'grid' ? 'board-cards board-packs' : 'board-cards'}
+        data-layout={layout}
+        aria-label="Board"
+      >
+        {layout === 'grid' && pinned.length > 0 && others.length > 0 ? (
+          <>
+            <CardGroup {...shared} heading={showGroups ? 'Pinned' : null} cards={pinned} layoutKey={layoutKey(pinned, openNoteId)} />
+            <CardGroup {...shared} heading={showGroups ? 'Others' : null} cards={others} layoutKey={layoutKey(others, openNoteId)} />
+          </>
+        ) : showGroups ? (
+          <>
+            <CardGroup {...shared} heading="Pinned" cards={pinned} layoutKey={layoutKey(pinned, openNoteId)} />
+            <CardGroup {...shared} heading="Others" cards={others} layoutKey={layoutKey(others, openNoteId)} />
+          </>
+        ) : (
+          <CardGroup {...shared} heading={null} cards={cards} layoutKey={layoutKey(cards, openNoteId)} />
+        )}
       </ul>
     </BoardShell>
   )

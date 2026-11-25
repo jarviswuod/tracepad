@@ -64,6 +64,7 @@ function note(currentVersionId: string): Note {
     trashedAt: null,
     createdAt: olderAt,
     updatedAt: newerAt,
+    sortPosition: null,
     serverUpdatedAt: null,
   }
 }

@@ -1,15 +1,38 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { TracepadDatabase } from '../data/db'
-import type { BoardSort } from '../data/notes'
+import type { BoardSort, TimeSort } from '../data/notes'
 import type { Uuid } from '../domain/types'
 import type { BoardLayout } from '../features/board/Board'
 import { boardReturnPath } from '../features/board/viewPath'
 import { NotesHome } from '../features/editor/NotesHome'
 import { HistoryPage } from '../features/history/History'
 
+const BOARD_SORT_KEY = 'tracepad.boardSort'
+const BOARD_CUSTOM_BASE_KEY = 'tracepad.boardCustomBase'
+
+function storedSort(): BoardSort {
+  try {
+    const value = localStorage.getItem(BOARD_SORT_KEY)
+    if (value === 'edited' || value === 'created' || value === 'custom') return value
+  } catch {
+    // A blocked storage API leaves the default sort.
+  }
+  return 'edited'
+}
+
+function storedCustomBase(): TimeSort {
+  try {
+    if (localStorage.getItem(BOARD_CUSTOM_BASE_KEY) === 'created') return 'created'
+  } catch {
+    // A blocked storage API leaves recently edited as the custom base.
+  }
+  return 'edited'
+}
+
 type BoardSettings = {
   sort: BoardSort
+  customBase: TimeSort
   layout: BoardLayout
   onSort: (sort: BoardSort) => void
   onLayout: (layout: BoardLayout) => void
@@ -21,9 +44,33 @@ type HistoryLocationState = { fromHistory?: boolean; boardPath?: string } | null
 /** Notes at `/home`, the other views on their own paths, history at `/history/<note>/<version>`. */
 export function AppRoutes({ db }: { db: TracepadDatabase }) {
   // Sort and layout stay here, off the URL, so history keeps the board's layout.
-  const [sort, setSort] = useState<BoardSort>('edited')
+  // Sort is remembered so a drag's custom order is still there after a reload.
+  const [sort, setSort] = useState<BoardSort>(storedSort)
+  const [customBase, setCustomBase] = useState<TimeSort>(storedCustomBase)
   const [layout, setLayout] = useState<BoardLayout>('grid')
-  const settings: BoardSettings = { sort, layout, onSort: setSort, onLayout: setLayout }
+
+  function changeSort(next: BoardSort) {
+    if (next === 'custom' && sort !== 'custom') setCustomBase(sort)
+    setSort(next)
+  }
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOARD_SORT_KEY, sort)
+    } catch {
+      // The order still applies for this visit.
+    }
+  }, [sort])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOARD_CUSTOM_BASE_KEY, customBase)
+    } catch {
+      // The order still applies for this visit.
+    }
+  }, [customBase])
+
+  const settings: BoardSettings = { sort, customBase, layout, onSort: changeSort, onLayout: setLayout }
 
   return (
     <Routes>
@@ -62,6 +109,7 @@ function BoardRoute({ db, settings }: { db: TracepadDatabase; settings: BoardSet
       <NotesHome
         db={db}
         sort={settings.sort}
+        customBase={settings.customBase}
         layout={settings.layout}
         openNoteId={openNoteId}
         onSort={settings.onSort}

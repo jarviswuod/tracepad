@@ -40,6 +40,7 @@ function note(id: string, overrides: Partial<Note> = {}): Note {
     trashedAt: null,
     createdAt: now,
     updatedAt: now,
+    sortPosition: null,
     serverUpdatedAt: null,
     ...overrides,
   }
