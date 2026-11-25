@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { TracepadDatabase } from '../../data/db'
 import {
   addLabelToNote,
@@ -19,12 +20,12 @@ import {
   setPinned,
   type BoardCard,
   type BoardSort,
-  type BoardView,
 } from '../../data/notes'
 import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '../../data/trash'
 import type { Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
+import { labelPath, pathsMatch, viewFromPath } from '../board/viewPath'
 import { searchBoardCards } from '../search/filterBoard'
 import { ConfirmDialog, UndoSnackbar, useUndoWindow } from '../trash/TrashUi'
 import { NoteContentEnd, NotePinButton, NoteToolbar } from '../labels/NoteMeta'
@@ -46,28 +47,16 @@ type Session = {
 
 type NotesHomeProps = {
   db: TracepadDatabase
-  view: BoardView
   sort: BoardSort
   layout: BoardLayout
   /** Open this note in the editor on arrival, as "Back to note" from history does. */
   openNoteId: Uuid | null
-  onView: (view: BoardView) => void
   onSort: (sort: BoardSort) => void
   onLayout: (layout: BoardLayout) => void
   onHistory: (noteId: Uuid) => void
 }
 
-export function NotesHome({
-  db,
-  view,
-  sort,
-  layout,
-  openNoteId,
-  onView,
-  onSort,
-  onLayout,
-  onHistory,
-}: NotesHomeProps) {
+export function NotesHome({ db, sort, layout, openNoteId, onSort, onLayout, onHistory }: NotesHomeProps) {
   const [deviceId, setDeviceId] = useState<Uuid | null>(null)
   const [cards, setCards] = useState<BoardCard[]>([])
   const [sources, setSources] = useState<BoardCard[]>([])
@@ -79,12 +68,15 @@ export function NotesHome({
   const [session, setSession] = useState<Session | null>(null)
   const [undoId, setUndoId] = useState<Uuid | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
   const editorRef = useRef<EditorHandle>(null)
   const openIdRef = useRef<Uuid | null>(null)
-  const viewRef = useRef(view)
+  const pathRef = useRef(location.pathname)
   const sortRef = useRef(sort)
-  viewRef.current = view
+  pathRef.current = location.pathname
   sortRef.current = sort
+  const view = viewFromPath(location.pathname, labels) ?? { kind: 'notes' as const }
   const request = useRef(0)
   const openedOnArrival = useRef(false)
   const trashing = useRef(false)
@@ -94,15 +86,17 @@ export function NotesHome({
   const refresh = useCallback(async () => {
     const ticket = ++request.current
     const openId = openIdRef.current
+    const path = pathRef.current
     try {
-      const [nextCards, nextLabels, nextActive, listedOpen, nextSources] = await Promise.all([
-        listBoard(db, { view: viewRef.current, sort: sortRef.current }),
-        listLabels(db),
+      const nextLabels = await listLabels(db)
+      const nextView = viewFromPath(path, nextLabels) ?? { kind: 'notes' as const }
+      const [nextCards, nextActive, listedOpen, nextSources] = await Promise.all([
+        listBoard(db, { view: nextView, sort: sortRef.current }),
         openId ? listActiveLabelIds(db, openId) : Promise.resolve([] as Uuid[]),
         openId ? getListedNote(db, openId) : Promise.resolve(null),
         listSearchSources(db, sortRef.current),
       ])
-      if (ticket !== request.current) return
+      if (ticket !== request.current || pathRef.current !== path) return
       setCards(nextCards)
       setSources(nextSources)
       setLabels(nextLabels)
@@ -135,7 +129,7 @@ export function NotesHome({
     setCards([])
     setReady(false)
     void refresh()
-  }, [refresh, view, sort])
+  }, [refresh, location.pathname, sort])
 
   async function openNote(noteId: Uuid) {
     await editorRef.current?.leave()
@@ -247,12 +241,25 @@ export function NotesHome({
 
   async function renameFromSidebar(labelId: Uuid, name: string): Promise<boolean> {
     const renamed = await renameLabel(db, { labelId, name })
+    if (!renamed) return false
+    const open = view.kind === 'label' && view.labelId === labelId
+    const nextPath = labelPath(renamed.name)
+    if (open && !pathsMatch(location.pathname, nextPath)) {
+      setLabels((current) => current.map((label) => (label.id === labelId ? renamed : label)))
+      navigate(nextPath, { replace: true })
+      return true
+    }
     await refresh()
-    return renamed != null
+    return true
   }
 
   async function deleteFromSidebar(labelId: Uuid) {
+    const open = view.kind === 'label' && view.labelId === labelId
     await deleteLabel(db, { labelId, deviceId: await currentDeviceId() })
+    if (open) {
+      navigate('/home')
+      return
+    }
     await refresh()
   }
 
@@ -369,7 +376,6 @@ export function NotesHome({
         openNoteId={opened?.noteId ?? null}
         createDisabled={deviceId == null}
         ready={ready}
-        onView={onView}
         onSort={onSort}
         onLayout={onLayout}
         onOpen={(noteId) => void openNote(noteId)}

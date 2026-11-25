@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { TracepadDatabase } from '../../data/db'
 import { listNoteHistory } from '../../data/history'
 import { listLabels } from '../../data/labels'
-import { ensureDeviceId, getListedNote, type BoardView, type ListedNote } from '../../data/notes'
+import { ensureDeviceId, getListedNote, type ListedNote } from '../../data/notes'
 import type { HistoryEvent, Label, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { BoardShell, LayoutToggle, NoteCard, cardHeading, type BoardLayout } from '../board/Board'
@@ -25,7 +25,6 @@ type HistoryPageProps = {
   versionId: Uuid | null
   layout: BoardLayout
   onLayout: (layout: BoardLayout) => void
-  onView: (view: BoardView) => void
   onOpenVersion: (versionId: Uuid) => void
   onCloseVersion: () => void
   onBackToNote: () => void
@@ -45,7 +44,6 @@ export function HistoryPage({
   versionId,
   layout,
   onLayout,
-  onView,
   onOpenVersion,
   onCloseVersion,
   onBackToNote,
@@ -79,7 +77,7 @@ export function HistoryPage({
 
   if (failed || loaded == null) {
     return (
-      <BoardShell labels={[]} view={null} onView={onView}>
+      <BoardShell labels={[]}>
         <div className="history">
           <p>{failed ? "Couldn't load history" : 'Loading history'}</p>
           {failed ? backToNote : null}
@@ -108,14 +106,14 @@ export function HistoryPage({
 
   if (comparing) {
     return (
-      <BoardShell labels={labels} view={null} onView={onView}>
+      <BoardShell labels={labels}>
         <CompareView older={comparing.older} newer={comparing.newer} onBack={() => setComparing(null)} />
       </BoardShell>
     )
   }
 
   return (
-    <BoardShell labels={labels} view={null} onView={onView}>
+    <BoardShell labels={labels}>
       <h2 className="take-note history-title">
         {cardHeading(listed?.version.title ?? null, listed ? versionText(listed.version).body : null)}
       </h2>

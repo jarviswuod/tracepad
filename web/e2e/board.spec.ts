@@ -61,6 +61,8 @@ test('creates notes, pins one, switches sort and views, and toggles grid and lis
 
   await patchNote(page, 'Beta', { trashedAt: new Date().toISOString() })
   await page.reload()
+  await expect(page).toHaveURL('/archive')
+  await nav.getByRole('button', { name: 'Notes', exact: true }).click()
   await expect(page.locator('.empty-state')).toHaveText('Take a note')
   await expect(page.getByRole('list', { name: 'Board' }).getByRole('button')).toHaveCount(0)
   await nav.getByRole('button', { name: 'Trash', exact: true }).click()

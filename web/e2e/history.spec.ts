@@ -103,7 +103,7 @@ test('history page: open by address, layout, sort, open a card, back, and compar
 
   await page.getByRole('button', { name: 'Back to history' }).click()
   await page.getByRole('button', { name: 'Back to note' }).click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/home')
   await expect(page.getByLabel('Body')).toHaveValue('beta')
 })
 
@@ -140,6 +140,6 @@ test('the History button opens the page, and browser back returns to the board',
   await expect(page.locator('.take-note')).toHaveText('Errands')
 
   await page.goBack()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/home')
   await expect(page.getByRole('button', { name: 'Errands, post office', exact: true })).toBeVisible()
 })

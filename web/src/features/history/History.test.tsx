@@ -337,7 +337,7 @@ describe('history page', () => {
     expect(within(dialog).getByLabelText('Body')).toHaveValue('beta')
     // The browser keeps this entry across a refresh. Once the board has used it, the state must be gone.
     await waitFor(() => expect(history.location.state).toBeNull())
-    expect(history.location.pathname).toBe('/')
+    expect(history.location.pathname).toBe('/home')
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())

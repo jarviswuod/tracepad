@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
 import { LabelSection } from '../labels/LabelSection'
 import { SearchBar } from '../search/SearchBar'
+import { labelPath, pathsMatch, viewFromPath } from './viewPath'
 import './board.css'
 
 export type BoardLayout = 'grid' | 'list'
@@ -20,7 +22,6 @@ type BoardProps = {
   openNoteId: Uuid | null
   createDisabled: boolean
   ready: boolean
-  onView: (view: BoardView) => void
   onSort: (sort: BoardSort) => void
   onLayout: (layout: BoardLayout) => void
   onOpen: (noteId: Uuid) => void
@@ -119,56 +120,68 @@ export function NoteCard({
   )
 }
 
-/** The side list and the main column. `view` is null when no board view is showing. */
+/** The side list and the main column. History is not a board path, so nothing there is current. */
 export function BoardShell({
   labels,
-  view,
-  onView,
   onCreateLabel,
   onRenameLabel,
   onDeleteLabel,
   children,
 }: {
   labels: Label[]
-  view: BoardView | null
-  onView: (view: BoardView) => void
   onCreateLabel?: (name: string) => Promise<boolean>
   onRenameLabel?: (labelId: Uuid, name: string) => Promise<boolean>
   onDeleteLabel?: (labelId: Uuid) => void
   children: ReactNode
 }) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const view = viewFromPath(pathname, labels)
+  const currentLabelId =
+    view?.kind === 'label' ? (labels.find((label) => label.id === view.labelId)?.id ?? null) : null
+
+  function openPath(path: string) {
+    if (pathsMatch(pathname, path)) return
+    navigate(path)
+  }
+
+  function openLabel(labelId: Uuid) {
+    const label = labels.find((item) => item.id === labelId)
+    if (label) openPath(labelPath(label.name))
+  }
+
   return (
     <div className="notes-home">
       <div className="board-shell">
         <nav className="side-list" aria-label="Views">
           <ul className="side-links">
             <li>
-              <SideButton current={view?.kind === 'notes'} onClick={() => onView({ kind: 'notes' })}>
+              <SideButton current={view?.kind === 'notes'} onClick={() => openPath('/home')}>
                 Notes
               </SideButton>
             </li>
             <li>
-              <SideButton current={view?.kind === 'reminders'} onClick={() => onView({ kind: 'reminders' })}>
+              <SideButton current={view?.kind === 'reminders'} onClick={() => openPath('/reminders')}>
                 Reminders
               </SideButton>
             </li>
             <li>
               <LabelSection
                 labels={labels}
-                currentLabelId={view?.kind === 'label' ? view.labelId : null}
-                onOpen={(labelId) => onView({ kind: 'label', labelId })}
+                currentLabelId={currentLabelId}
+                onOpen={openLabel}
                 onCreate={onCreateLabel}
                 onRename={onRenameLabel}
                 onDelete={onDeleteLabel}
               />
             </li>
             <li>
-              <SideButton current={view?.kind === 'archive'} onClick={() => onView({ kind: 'archive' })}>
+              <SideButton current={view?.kind === 'archive'} onClick={() => openPath('/archive')}>
                 Archive
               </SideButton>
             </li>
             <li>
-              <SideButton current={view?.kind === 'trash'} onClick={() => onView({ kind: 'trash' })}>
+              <SideButton current={view?.kind === 'trash'} onClick={() => openPath('/trash')}>
                 Trash
               </SideButton>
             </li>
@@ -209,7 +222,6 @@ export function Board({
   openNoteId,
   createDisabled,
   ready,
-  onView,
   onSort,
   onLayout,
   onOpen,
@@ -263,8 +275,6 @@ export function Board({
   return (
     <BoardShell
       labels={labels}
-      view={view}
-      onView={onView}
       onCreateLabel={onCreateLabel}
       onRenameLabel={onRenameLabel}
       onDeleteLabel={onDeleteLabel}

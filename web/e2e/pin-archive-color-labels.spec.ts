@@ -58,10 +58,8 @@ test('pins, archives, colors, then adds, renames and deletes a label', async ({ 
   await page.getByRole('dialog', { name: 'Delete label?' }).getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(nav.getByRole('button', { name: 'Job', exact: true })).toHaveCount(0)
   await labels.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page).toHaveURL('/home')
   await expect(page.getByRole('button', { name: 'Alpha, Apples', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Beta, Berries', exact: true })).toHaveCount(0)
-
-  await nav.getByRole('button', { name: 'Notes', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Beta, Berries', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Beta, Berries', exact: true })).not.toContainText('Job')
   await nav.getByRole('button', { name: 'Archive', exact: true }).click()
