@@ -129,7 +129,10 @@ test('archives a blank new note from More and sets a reminder from that menu', a
   await page.getByRole('button', { name: 'Take a note' }).click()
   const note = page.getByRole('group', { name: 'Note' })
   await note.getByRole('button', { name: 'More', exact: true }).click()
-  await expect(note.getByRole('menuitem')).toHaveText(['Remind me', 'Archive'])
+  const menuItems = note.getByRole('menuitem')
+  await expect(menuItems).toHaveCount(2)
+  await expect(menuItems.nth(0)).toHaveAccessibleName('Remind me')
+  await expect(menuItems.nth(1)).toHaveAccessibleName('Archive')
   await note.getByRole('menuitem', { name: 'Archive', exact: true }).click()
 
   await note.getByRole('button', { name: 'More', exact: true }).click()

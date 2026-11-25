@@ -3,6 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { BoardCard, BoardSort, BoardView } from '../../data/notes'
 import type { Label, Uuid } from '../../domain/types'
 import { displayedBody } from '../../domain/versioning'
+import { IconButton } from '../../ui/icons'
+import { SideLink } from '../../ui/SideLink'
+import { useSideNames } from '../../ui/sideNames'
 import { LabelSection } from '../labels/LabelSection'
 import { NotePack } from './NotePack'
 import { labelPath, pathsMatch, viewFromPath } from './viewPath'
@@ -51,22 +54,6 @@ export function cardHeading(title: string | null, preview: string | null): strin
 
 function daysLeftLabel(days: number): string {
   return days === 1 ? '1 day left' : `${days} days left`
-}
-
-function SideButton({
-  current,
-  onClick,
-  children,
-}: {
-  current: boolean
-  onClick: () => void
-  children: string
-}) {
-  return (
-    <button type="button" aria-current={current ? 'page' : undefined} onClick={onClick}>
-      {children}
-    </button>
-  )
 }
 
 export function NoteCard({
@@ -149,6 +136,7 @@ export function BoardShell({
 }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { open } = useSideNames()
   const view = viewFromPath(pathname, labels)
   const currentLabelId =
     view?.kind === 'label' ? (labels.find((label) => label.id === view.labelId)?.id ?? null) : null
@@ -166,17 +154,18 @@ export function BoardShell({
   return (
     <div className="notes-home">
       <div className="board-shell">
-        <nav className="side-list" aria-label="Views">
+        <nav className={open ? 'side-list' : 'side-list is-collapsed'} aria-label="Views">
           <ul className="side-links">
             <li>
-              <SideButton current={view?.kind === 'notes'} onClick={() => openPath('/home')}>
-                Notes
-              </SideButton>
+              <SideLink current={view?.kind === 'notes'} label="Notes" icon="notes" onClick={() => openPath('/home')} />
             </li>
             <li>
-              <SideButton current={view?.kind === 'reminders'} onClick={() => openPath('/reminders')}>
-                Reminders
-              </SideButton>
+              <SideLink
+                current={view?.kind === 'reminders'}
+                label="Reminders"
+                icon="remind"
+                onClick={() => openPath('/reminders')}
+              />
             </li>
             <li>
               <LabelSection
@@ -189,14 +178,10 @@ export function BoardShell({
               />
             </li>
             <li>
-              <SideButton current={view?.kind === 'archive'} onClick={() => openPath('/archive')}>
-                Archive
-              </SideButton>
+              <SideLink current={view?.kind === 'archive'} label="Archive" icon="archive" onClick={() => openPath('/archive')} />
             </li>
             <li>
-              <SideButton current={view?.kind === 'trash'} onClick={() => openPath('/trash')}>
-                Trash
-              </SideButton>
+              <SideLink current={view?.kind === 'trash'} label="Trash" icon="delete" onClick={() => openPath('/trash')} />
             </li>
           </ul>
         </nav>
@@ -215,12 +200,8 @@ export function LayoutToggle({
 }) {
   return (
     <div className="layout-toggle" role="group" aria-label="Layout">
-      <button type="button" aria-pressed={layout === 'grid'} onClick={() => onLayout('grid')}>
-        Grid
-      </button>
-      <button type="button" aria-pressed={layout === 'list'} onClick={() => onLayout('list')}>
-        List
-      </button>
+      <IconButton label="Grid" icon="grid" aria-pressed={layout === 'grid'} onClick={() => onLayout('grid')} />
+      <IconButton label="List" icon="list" aria-pressed={layout === 'list'} onClick={() => onLayout('list')} />
     </div>
   )
 }
@@ -276,16 +257,12 @@ function CardGroup({
       >
         {inTrash && card.daysLeft != null ? (
           <div className="trash-actions">
-            <button type="button" aria-label={`Restore ${label}`} onClick={() => onRestore(card.note.id)}>
-              Restore
-            </button>
-            <button
-              type="button"
-              aria-label={`Delete ${label} forever`}
+            <IconButton label={`Restore ${label}`} icon="restore" onClick={() => onRestore(card.note.id)} />
+            <IconButton
+              label={`Delete ${label} forever`}
+              icon="delete"
               onClick={() => onDeleteForever(card.note.id)}
-            >
-              Delete forever
-            </button>
+            />
           </div>
         ) : null}
       </NoteCard>

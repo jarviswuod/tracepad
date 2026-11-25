@@ -53,6 +53,19 @@ export function pathsMatch(a: string, b: string): boolean {
   return aName != null && aName === bName
 }
 
+/** The word in the top bar. Notes, history, and anything else keep the app name. */
+export function barTitle(pathname: string): string {
+  if (pathname === '/archive') return 'Archive'
+  if (pathname === '/trash') return 'Trash'
+  if (pathname === '/reminders') return 'Reminders'
+  return labelNameFromPath(pathname) ?? 'Tracepad'
+}
+
+/** Home shows the yellow lightbulb beside the app name. */
+export function showsBrandMark(pathname: string): boolean {
+  return pathname === '/' || pathname === '/home'
+}
+
 /** Where "Back to note" returns. Anything that isn't a board path is Notes. */
 export function boardReturnPath(value: unknown): string {
   if (typeof value !== 'string') return '/home'

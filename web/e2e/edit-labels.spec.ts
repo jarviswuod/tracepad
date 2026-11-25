@@ -15,12 +15,12 @@ test('creates, orders, renames and deletes labels from the Edit labels dialog', 
   await createLabel(dialog, 'banana')
   await createLabel(dialog, '1. 9')
   await expect(names(dialog)).toHaveText(['1. 9', '1. 10', 'banana'])
-  await expect(nav.getByRole('list', { name: 'Labels' }).getByRole('button')).toHaveText([
-    '1. 9',
-    '1. 10',
-    'banana',
-    'Edit labels',
-  ])
+  const sideButtons = nav.getByRole('list', { name: 'Labels' }).getByRole('button')
+  await expect(sideButtons).toHaveCount(4)
+  await expect(sideButtons.nth(0)).toHaveAccessibleName('1. 9')
+  await expect(sideButtons.nth(1)).toHaveAccessibleName('1. 10')
+  await expect(sideButtons.nth(2)).toHaveAccessibleName('banana')
+  await expect(sideButtons.nth(3)).toHaveAccessibleName('Edit labels')
 
   await dialog.getByRole('button', { name: 'banana', exact: true }).click()
   await dialog.getByLabel('Rename banana').fill('Apple')

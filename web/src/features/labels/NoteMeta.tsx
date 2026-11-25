@@ -1,34 +1,43 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Label, Uuid } from '../../domain/types'
-import { NOTE_COLORS } from './colors'
-import { formatEditedDate } from './editedDate'
-import './labels.css'
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { Label, Uuid } from "../../domain/types";
+import { IconButton } from "../../ui/icons";
+import { NOTE_COLORS } from "./colors";
+import { formatEditedDate } from "./editedDate";
+import "./labels.css";
 
-type Panel = 'closed' | 'menu' | 'reminder' | 'labels' | 'colors'
+type Panel = "closed" | "menu" | "reminder" | "labels" | "colors";
 
 type NotePinButtonProps = {
-  isPinned: boolean
-  onPin: (pinned: boolean) => void
-}
+  isPinned: boolean;
+  onPin: (pinned: boolean) => void;
+};
 
-/** "Pin" or "Unpin" on the title's line. */
+/** Pin or Unpin on the title's line. The word is the accessible name. */
 export function NotePinButton({ isPinned, onPin }: NotePinButtonProps) {
+  const label = isPinned ? "Unpin" : "Pin";
   return (
-    <button type="button" className="editor-pin" onClick={() => onPin(!isPinned)}>
-      {isPinned ? 'Unpin' : 'Pin'}
-    </button>
-  )
+    <IconButton
+      className="editor-pin"
+      label={label}
+      icon={isPinned ? "pinFilled" : "pin"}
+      onClick={() => onPin(!isPinned)}
+    />
+  );
 }
 
 type NoteContentEndProps = {
-  labels: Label[]
-  activeLabelIds: Uuid[]
-  updatedAt: string
-}
+  labels: Label[];
+  activeLabelIds: Uuid[];
+  updatedAt: string;
+};
 
 /** Label chips and the edited date, after the body. Labels stay in the shared order. */
-export function NoteContentEnd({ labels, activeLabelIds, updatedAt }: NoteContentEndProps) {
-  const chips = labels.filter((label) => activeLabelIds.includes(label.id))
+export function NoteContentEnd({
+  labels,
+  activeLabelIds,
+  updatedAt,
+}: NoteContentEndProps) {
+  const chips = labels.filter((label) => activeLabelIds.includes(label.id));
   return (
     <div className="note-content-end">
       <div className="note-open-chips">
@@ -42,34 +51,34 @@ export function NoteContentEnd({ labels, activeLabelIds, updatedAt }: NoteConten
         {formatEditedDate(updatedAt)}
       </time>
     </div>
-  )
+  );
 }
 
 type NoteToolbarBase = {
-  isArchived: boolean
-  onArchive: (archived: boolean) => void
+  isArchived: boolean;
+  onArchive: (archived: boolean) => void;
   /** The reminder form. Called with a close function when Remind me is open. */
-  renderReminder: (close: () => void) => ReactNode
-}
+  renderReminder: (close: () => void) => ReactNode;
+};
 
 type NoteToolbarProps = NoteToolbarBase &
   (
-    | { scope: 'create' }
+    | { scope: "create" }
     | {
-        scope: 'note'
-        trashed: boolean
-        color: string | null
-        labels: Label[]
-        activeLabelIds: Uuid[]
-        onColor: (color: string | null) => void
-        onToggleLabel: (labelId: Uuid, on: boolean) => void
-        onAddLabel: (name: string) => void
-        onHistory: () => void
-        onDelete: () => void
-        onRestore: () => void
-        onDeleteForever: () => void
+        scope: "note";
+        trashed: boolean;
+        color: string | null;
+        labels: Label[];
+        activeLabelIds: Uuid[];
+        onColor: (color: string | null) => void;
+        onToggleLabel: (labelId: Uuid, on: boolean) => void;
+        onAddLabel: (name: string) => void;
+        onHistory: () => void;
+        onDelete: () => void;
+        onRestore: () => void;
+        onDeleteForever: () => void;
       }
-  )
+  );
 
 /**
  * More, and Close from the modal. Remind me and Archive live in More.
@@ -77,142 +86,164 @@ type NoteToolbarProps = NoteToolbarBase &
  * Delete forever, and no More.
  */
 export function NoteToolbar(props: NoteToolbarProps) {
-  const { isArchived, onArchive, renderReminder } = props
-  const [panel, setPanel] = useState<Panel>('closed')
-  const [query, setQuery] = useState('')
-  const rootRef = useRef<HTMLDivElement>(null)
-  const labelInputRef = useRef<HTMLInputElement>(null)
-  const open = panel !== 'closed'
+  const { isArchived, onArchive, renderReminder } = props;
+  const [panel, setPanel] = useState<Panel>("closed");
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const labelInputRef = useRef<HTMLInputElement>(null);
+  const open = panel !== "closed";
 
   useEffect(() => {
-    if (panel !== 'labels') return
-    labelInputRef.current?.focus()
-  }, [panel])
+    if (panel !== "labels") return;
+    labelInputRef.current?.focus();
+  }, [panel]);
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
 
     function shut(event: Event) {
-      const target = event.target
-      if (!(target instanceof Node) || rootRef.current?.contains(target)) return
-      setPanel('closed')
-      setQuery('')
-      const dialog = rootRef.current?.closest('[role="dialog"]')
+      const target = event.target;
+      if (!(target instanceof Node) || rootRef.current?.contains(target))
+        return;
+      setPanel("closed");
+      setQuery("");
+      const dialog = rootRef.current?.closest('[role="dialog"]');
       if (!dialog?.contains(target)) {
-        event.preventDefault()
-        event.stopPropagation()
+        event.preventDefault();
+        event.stopPropagation();
       }
     }
 
     function onKey(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      event.stopPropagation()
-      setPanel('closed')
-      setQuery('')
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPanel("closed");
+      setQuery("");
     }
 
-    document.addEventListener('pointerdown', shut, true)
-    document.addEventListener('mousedown', shut, true)
-    document.addEventListener('click', shut, true)
-    document.addEventListener('keydown', onKey, true)
+    document.addEventListener("pointerdown", shut, true);
+    document.addEventListener("mousedown", shut, true);
+    document.addEventListener("click", shut, true);
+    document.addEventListener("keydown", onKey, true);
     return () => {
-      document.removeEventListener('pointerdown', shut, true)
-      document.removeEventListener('mousedown', shut, true)
-      document.removeEventListener('click', shut, true)
-      document.removeEventListener('keydown', onKey, true)
-    }
-  }, [open])
+      document.removeEventListener("pointerdown", shut, true);
+      document.removeEventListener("mousedown", shut, true);
+      document.removeEventListener("click", shut, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
 
-  if (props.scope === 'note' && props.trashed) {
+  if (props.scope === "note" && props.trashed) {
     return (
       <>
-        <button type="button" onClick={props.onRestore}>
-          Restore
-        </button>
-        <button type="button" onClick={props.onDeleteForever}>
-          Delete forever
-        </button>
+        <IconButton label="Restore" icon="restore" onClick={props.onRestore} />
+        <IconButton
+          label="Delete forever"
+          icon="delete"
+          onClick={props.onDeleteForever}
+        />
       </>
-    )
+    );
   }
 
-  const note = props.scope === 'note' ? props : null
-  const trimmed = query.trim()
-  const needle = trimmed.toLowerCase()
+  const note = props.scope === "note" ? props : null;
+  const trimmed = query.trim();
+  const needle = trimmed.toLowerCase();
   const filtered =
-    note == null ? [] : needle === '' ? note.labels : note.labels.filter((label) => label.name.toLowerCase().includes(needle))
-  const showCreate = note != null && needle !== '' && filtered.length === 0
+    note == null
+      ? []
+      : needle === ""
+        ? note.labels
+        : note.labels.filter((label) =>
+            label.name.toLowerCase().includes(needle),
+          );
+  const showCreate = note != null && needle !== "" && filtered.length === 0;
 
   function toggleMore() {
-    setQuery('')
-    setPanel((current) => (current === 'closed' ? 'menu' : 'closed'))
+    setQuery("");
+    setPanel((current) => (current === "closed" ? "menu" : "closed"));
   }
 
   function closePanel() {
-    setPanel('closed')
-    setQuery('')
+    setPanel("closed");
+    setQuery("");
   }
 
   return (
     <div className="note-more" ref={rootRef}>
-      <button type="button" aria-expanded={open} aria-haspopup="menu" onClick={toggleMore}>
-        More
-      </button>
-      {panel === 'menu' ? (
+      <IconButton
+        label="More"
+        icon="more"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={toggleMore}
+      />
+      {panel === "menu" ? (
         <div className="note-more-panel" role="menu" aria-label="More">
-          <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('reminder')}>
-            Remind me
-          </button>
-          <button
-            type="button"
+          <IconButton
             role="menuitem"
             className="note-menu-item"
+            label="Remind me"
+            icon="remind"
+            onClick={() => setPanel("reminder")}
+          />
+          <IconButton
+            role="menuitem"
+            className="note-menu-item"
+            label={isArchived ? "Unarchive" : "Archive"}
+            icon={isArchived ? "unarchive" : "archive"}
             onClick={() => {
-              closePanel()
-              onArchive(!isArchived)
+              closePanel();
+              onArchive(!isArchived);
             }}
-          >
-            {isArchived ? 'Unarchive' : 'Archive'}
-          </button>
-          {props.scope === 'note' ? (
+          />
+          {props.scope === "note" ? (
             <>
-              <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('labels')}>
-                Change labels
-              </button>
-              <button type="button" role="menuitem" className="note-menu-item" onClick={() => setPanel('colors')}>
-                Colors
-              </button>
-              <button
-                type="button"
+              <IconButton
                 role="menuitem"
                 className="note-menu-item"
-                onClick={() => {
-                  closePanel()
-                  props.onHistory()
-                }}
-              >
-                Version history
-              </button>
-              <button
-                type="button"
+                label="Change labels"
+                icon="labels"
+                onClick={() => setPanel("labels")}
+              />
+              <IconButton
                 role="menuitem"
                 className="note-menu-item"
+                label="Colors"
+                icon="colors"
+                onClick={() => setPanel("colors")}
+              />
+              <IconButton
+                role="menuitem"
+                className="note-menu-item"
+                label="Version history"
+                icon="history"
                 onClick={() => {
-                  closePanel()
-                  props.onDelete()
+                  closePanel();
+                  props.onHistory();
                 }}
-              >
-                Delete note
-              </button>
+              />
+              <IconButton
+                role="menuitem"
+                className="note-menu-item"
+                label="Delete note"
+                icon="delete"
+                onClick={() => {
+                  closePanel();
+                  props.onDelete();
+                }}
+              />
             </>
           ) : null}
         </div>
       ) : null}
-      {panel === 'reminder' ? (
-        <div className="note-more-panel note-reminder-panel">{renderReminder(closePanel)}</div>
+      {panel === "reminder" ? (
+        <div className="note-more-panel note-reminder-panel">
+          {renderReminder(closePanel)}
+        </div>
       ) : null}
-      {note && panel === 'labels' ? (
+      {note && panel === "labels" ? (
         <div className="note-more-panel" role="group" aria-label="Label note">
           <p className="note-panel-heading">Label note</p>
           <input
@@ -230,7 +261,9 @@ export function NoteToolbar(props: NoteToolbarProps) {
                   <input
                     type="checkbox"
                     checked={note.activeLabelIds.includes(label.id)}
-                    onChange={(event) => note.onToggleLabel(label.id, event.target.checked)}
+                    onChange={(event) =>
+                      note.onToggleLabel(label.id, event.target.checked)
+                    }
                   />
                   {label.name}
                 </label>
@@ -242,8 +275,8 @@ export function NoteToolbar(props: NoteToolbarProps) {
               type="button"
               className="note-create-label"
               onClick={() => {
-                setQuery('')
-                note.onAddLabel(trimmed)
+                setQuery("");
+                note.onAddLabel(trimmed);
               }}
             >
               {`Create "${trimmed}"`}
@@ -251,8 +284,12 @@ export function NoteToolbar(props: NoteToolbarProps) {
           ) : null}
         </div>
       ) : null}
-      {note && panel === 'colors' ? (
-        <div className="note-more-panel note-color-panel" role="group" aria-label="Colors">
+      {note && panel === "colors" ? (
+        <div
+          className="note-more-panel note-color-panel"
+          role="group"
+          aria-label="Colors"
+        >
           <div className="color-choices">
             {NOTE_COLORS.map((swatch) => (
               <button
@@ -262,7 +299,7 @@ export function NoteToolbar(props: NoteToolbarProps) {
                 title={swatch.name}
                 aria-label={`${swatch.name} color`}
                 aria-pressed={note.color === swatch.value}
-                style={{ backgroundColor: swatch.value ?? '#ffffff' }}
+                style={{ backgroundColor: swatch.value ?? "#ffffff" }}
                 onClick={() => note.onColor(swatch.value)}
               />
             ))}
@@ -270,5 +307,5 @@ export function NoteToolbar(props: NoteToolbarProps) {
         </div>
       ) : null}
     </div>
-  )
+  );
 }

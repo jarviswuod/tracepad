@@ -5,7 +5,14 @@ import { useLocation, MemoryRouter, Router, UNSAFE_createMemoryHistory } from 'r
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Note, NoteVersion } from '../domain/types'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
-import { labelNameFromPath, labelPath, viewFromPath, UNKNOWN_LABEL_ID } from '../features/board/viewPath'
+import {
+  barTitle,
+  labelNameFromPath,
+  labelPath,
+  showsBrandMark,
+  viewFromPath,
+  UNKNOWN_LABEL_ID,
+} from '../features/board/viewPath'
 import { AppRoutes } from './AppRoutes'
 
 const opened: TracepadDatabase[] = []
@@ -124,6 +131,16 @@ describe('view paths', () => {
     expect(viewFromPath('/label/trash', [{ id: 'bin', name: 'trash' }])).toEqual({ kind: 'label', labelId: 'bin' })
     expect(viewFromPath('/label/home', [{ id: 'house', name: 'home' }])).toEqual({ kind: 'label', labelId: 'house' })
     expect(viewFromPath('/label/Missing', [work])).toEqual({ kind: 'label', labelId: UNKNOWN_LABEL_ID })
+
+    expect(barTitle('/home')).toBe('Tracepad')
+    expect(barTitle('/')).toBe('Tracepad')
+    expect(barTitle('/history/note-1')).toBe('Tracepad')
+    expect(barTitle('/archive')).toBe('Archive')
+    expect(barTitle('/trash')).toBe('Trash')
+    expect(barTitle('/reminders')).toBe('Reminders')
+    expect(barTitle(encoded)).toBe('Q&A / home')
+    expect(showsBrandMark('/home')).toBe(true)
+    expect(showsBrandMark('/trash')).toBe(false)
   })
 })
 

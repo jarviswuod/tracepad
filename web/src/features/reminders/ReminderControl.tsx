@@ -3,6 +3,7 @@ import { getReminder, removeReminder, setReminder } from '../../data/reminders'
 import type { TracepadDatabase } from '../../data/db'
 import { PAST_TIME_MESSAGE, refusalForFireAt } from '../../domain/reminders'
 import type { Reminder, Uuid } from '../../domain/types'
+import { IconButton } from '../../ui/icons'
 import { primeReminderAudio } from './tone'
 import './reminders.css'
 
@@ -58,12 +59,6 @@ export function reminderFieldValue(fireAt: string | null | undefined, now: Date)
     if (saved !== '') return saved
   }
   return defaultReminderValue(now)
-}
-
-function formatReminderWhen(fireAt: string): string {
-  const date = new Date(fireAt)
-  if (Number.isNaN(date.getTime())) return fireAt
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 /** Set, change, or remove the note's one reminder. A past time shows "Pick a future time." */
@@ -220,9 +215,12 @@ export function ReminderControl({
 
   return (
     <div className="reminder-control" ref={rootRef}>
-      <button type="button" aria-expanded={open} aria-label={reminder ? 'Change reminder' : 'Remind me'} onClick={toggle}>
-        {reminder ? formatReminderWhen(reminder.fireAt) : 'Remind me'}
-      </button>
+      <IconButton
+        label={reminder ? 'Change reminder' : 'Remind me'}
+        icon="remind"
+        aria-expanded={open}
+        onClick={toggle}
+      />
       {form}
     </div>
   )

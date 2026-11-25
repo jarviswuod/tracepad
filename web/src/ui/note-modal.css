@@ -81,6 +81,15 @@
   background: rgba(95, 99, 104, 0.157);
 }
 
+.note-modal-actions button.icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border-radius: 50%;
+  font-weight: 400;
+  color: #5f6368;
+}
+
 /* Edit labels: narrow, near the top, only as tall as its rows. */
 .note-modal-backdrop-labels {
   align-items: flex-start;

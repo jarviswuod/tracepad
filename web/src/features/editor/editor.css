@@ -141,3 +141,14 @@
   cursor: pointer;
   padding: 0.2rem 0;
 }
+
+.editor-actions button.icon-button,
+.checklist-item button.icon-button,
+button.checklist-add.icon-button,
+.editor-pin.icon-button {
+  color: #5f6368;
+}
+
+.editor-checklist-toggle.icon-button {
+  margin-right: auto;
+}

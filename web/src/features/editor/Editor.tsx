@@ -11,6 +11,7 @@ import {
   textToChecklistItems,
   type NoteContent,
 } from '../../domain/versioning'
+import { IconButton } from '../../ui/icons'
 import { SavingDot, savingDotState } from './SavingDot'
 
 /** Wait this long after the last keystroke, then save a draft. */
@@ -549,32 +550,24 @@ export function Editor({
                     value={item.text}
                     onChange={(event) => changeItem(item.id, event.target.value)}
                   />
-                  <button
-                    type="button"
-                    aria-label={`Move ${name} up`}
+                  <IconButton
+                    label={`Move ${name} up`}
+                    icon="arrowUp"
                     disabled={index === groupStart}
                     onClick={() => moveItem(item.id, -1)}
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${name} down`}
+                  />
+                  <IconButton
+                    label={`Move ${name} down`}
+                    icon="arrowDown"
                     disabled={index === groupEnd - 1}
                     onClick={() => moveItem(item.id, 1)}
-                  >
-                    Down
-                  </button>
-                  <button type="button" aria-label={`Remove ${name}`} onClick={() => removeItem(item.id)}>
-                    Remove
-                  </button>
+                  />
+                  <IconButton label={`Remove ${name}`} icon="close" onClick={() => removeItem(item.id)} />
                 </li>
               )
             })}
           </ul>
-          <button type="button" className="checklist-add" onClick={addItem}>
-            Add item
-          </button>
+          <IconButton className="checklist-add" label="Add item" icon="add" onClick={addItem} />
         </>
       ) : (
         <textarea
@@ -588,24 +581,21 @@ export function Editor({
       )}
       {actions}
       <div className="editor-actions">
-        <button type="button" className="editor-checklist-toggle" onClick={convert}>
-          {kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
-        </button>
+        <IconButton
+          className="editor-checklist-toggle"
+          label={kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
+          icon={kind === 'checklist' ? 'checklistOff' : 'checklistOn'}
+          onClick={convert}
+        />
         {more}
         {showFooter ? (
           <>
             {trashed ? (
-              <button type="button" onClick={() => void onRestoreRef.current?.()}>
-                Restore
-              </button>
+              <IconButton label="Restore" icon="restore" onClick={() => void onRestoreRef.current?.()} />
             ) : (
-              <button type="button" onClick={() => void onTrashRef.current()}>
-                Move to trash
-              </button>
+              <IconButton label="Move to trash" icon="delete" onClick={() => void onTrashRef.current()} />
             )}
-            <button type="button" onClick={openHistory}>
-              History
-            </button>
+            <IconButton label="History" icon="history" onClick={openHistory} />
           </>
         ) : null}
       </div>

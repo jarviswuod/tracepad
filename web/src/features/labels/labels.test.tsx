@@ -308,7 +308,7 @@ describe('edit labels', () => {
     const nav = screen.getByRole('navigation', { name: 'Views' })
     const side = within(await within(nav).findByRole('list', { name: 'Labels' }))
       .getAllByRole('button')
-      .map((button) => button.textContent)
+      .map((button) => (button.textContent ?? '').trim() || button.getAttribute('aria-label'))
     expect(side).toEqual(['1. 9', '1. 10', 'banana', 'Edit labels'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Shopping, Milk' }))

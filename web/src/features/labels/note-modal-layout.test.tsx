@@ -86,6 +86,10 @@ function toolbar(dialog: HTMLElement): HTMLElement {
   return bar as HTMLElement
 }
 
+function controlName(button: Element): string | null {
+  return button.getAttribute('aria-label')
+}
+
 describe('open note layout', () => {
   it('puts Pin on the title line, chips and the date after the body, and More and Close in the toolbar', async () => {
     const db = await open()
@@ -117,12 +121,12 @@ describe('open note layout', () => {
     expect(scroller).toContainElement(chip)
     expect(scroller).toContainElement(edited)
     expect(scroller?.contains(bar)).toBe(false)
-    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['More', 'Close'])
+    expect([...bar.querySelectorAll('button')].map(controlName)).toEqual(['More', 'Close'])
     expect(within(dialog).queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
     fireEvent.click(within(bar).getByRole('button', { name: 'More' }))
     const menu = within(dialog).getByRole('menu', { name: 'More' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+    expect(within(menu).getAllByRole('menuitem').map(controlName)).toEqual([
       'Remind me',
       'Archive',
       'Change labels',
@@ -216,11 +220,7 @@ describe('open note layout', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Gone, Soon' }))
     const dialog = await screen.findByRole('dialog', { name: 'Note' })
     const bar = toolbar(dialog)
-    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
-      'Restore',
-      'Delete forever',
-      'Close',
-    ])
+    expect([...bar.querySelectorAll('button')].map(controlName)).toEqual(['Restore', 'Delete forever', 'Close'])
     expect(within(dialog).queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
@@ -259,6 +259,6 @@ describe('open note layout', () => {
 
     fireEvent.click(within(noteGroup).getByRole('button', { name: 'More' }))
     const menu = within(noteGroup).getByRole('menu', { name: 'More' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Remind me', 'Archive'])
+    expect(within(menu).getAllByRole('menuitem').map(controlName)).toEqual(['Remind me', 'Archive'])
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Label, Uuid } from '../../domain/types'
+import { IconButton } from '../../ui/icons'
 import { NoteModal } from '../../ui/NoteModal'
 import { ConfirmDialog } from '../trash/TrashUi'
 import './labels.css'
@@ -116,14 +117,12 @@ export function EditLabelsDialog({ labels, onCreate, onRename, onDelete, onClose
                 {label.name}
               </button>
             )}
-            <button
-              type="button"
+            <IconButton
               className="edit-label-delete"
-              aria-label={`Delete ${label.name}`}
+              label={`Delete ${label.name}`}
+              icon="delete"
               onClick={() => setPending(label)}
-            >
-              Delete
-            </button>
+            />
           </li>
         ))}
       </ul>

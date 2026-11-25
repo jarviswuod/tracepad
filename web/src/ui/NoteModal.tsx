@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { IconButton } from './icons'
 import './note-modal.css'
 
 const FOCUSABLE = [
@@ -148,9 +149,13 @@ export function NoteModal({
         <div className="note-modal-body">{children}</div>
         <div className="note-modal-actions">
           {toolbar}
-          <button type="button" className="note-modal-close" onClick={onClose}>
-            {closeText}
-          </button>
+          {closeText === 'Close' ? (
+            <IconButton className="note-modal-close" label="Close" icon="close" onClick={onClose} />
+          ) : (
+            <button type="button" className="note-modal-close" onClick={onClose}>
+              {closeText}
+            </button>
+          )}
         </div>
       </div>
     </div>

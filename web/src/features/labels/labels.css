@@ -154,6 +154,33 @@
   padding: 0.5rem 1rem;
 }
 
+.note-more-panel[role='menu'] {
+  min-width: 0;
+}
+
+.editor-actions .note-more-panel button.note-menu-item.icon-button,
+.note-modal-actions button.note-menu-item.icon-button {
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  justify-content: center;
+  padding: 8px 12px;
+  background: transparent;
+  color: #3c4043;
+  font-weight: 400;
+}
+
+button.edit-label-delete.icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  color: #5f6368;
+}
+
 .note-modal-actions .color-swatch {
   width: 1.75rem;
   height: 1.75rem;
