@@ -304,11 +304,6 @@
   min-width: 0;
 }
 
-.note-card-frame {
-  position: relative;
-  width: 100%;
-}
-
 .note-card {
   display: flex;
   flex-direction: column;
@@ -325,33 +320,18 @@
   cursor: pointer;
 }
 
-/* Reserves the action row so the title stays above the icons. */
-.note-card-actions-slot {
-  display: block;
-  flex: none;
-  height: 40px;
-}
-
-.note-card-actions-slot[hidden] {
-  display: none;
-}
-
 .note-card-actions {
-  position: absolute;
-  z-index: 1;
-  left: 16px;
-  right: 16px;
-  bottom: 12px;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  height: 40px;
 }
 
-.note-card-actions[hidden] {
-  display: none;
+/* Hidden icons stay in the layout. Descendants would still take clicks otherwise. */
+.note-card-actions:not(.is-shown),
+.note-card-actions:not(.is-shown) * {
+  pointer-events: none;
 }
 
 .note-card-actions > * {
@@ -397,12 +377,12 @@
 }
 
 .note-preview {
+  display: block;
+  min-height: 4.5rem;
+  max-height: calc(1.5em * 10);
   line-height: 1.5;
   color: #3c4043;
   white-space: pre-wrap;
-  display: -webkit-box;
-  -webkit-line-clamp: 10;
-  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 

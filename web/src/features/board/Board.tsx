@@ -110,69 +110,68 @@ export function NoteCard({
   const title = card.version.title
   const preview = displayedBody(card.version)
   const showActions = actions != null && !open && (actionsAlways || hover || focus)
-  const button = (
-    <button
-      type="button"
-      className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
-      data-pinned={card.note.isPinned ? 'true' : 'false'}
-      data-color={card.note.color ?? 'default'}
-      aria-label={cardLabel(title, preview)}
-      style={{ backgroundColor: card.note.color ?? '#ffffff' }}
-      onClick={onOpen}
-      onFocus={() => setFocus(true)}
-    >
-      {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
-      {title ? <span className="note-title">{title}</span> : null}
-      {preview ? <span className={title ? 'note-preview' : 'note-title'}>{preview}</span> : null}
-      {!title && !preview ? <span className="note-title">{UNTITLED}</span> : null}
-      {card.labels.length > 0 ? (
-        <span className="note-chips">
-          {card.labels.map((label) => (
-            <span key={label.id} className="note-chip">
-              {label.name}
-            </span>
-          ))}
-        </span>
-      ) : null}
-      {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
-      {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
-      {actions != null ? <span className="note-card-actions-slot" hidden={!showActions} /> : null}
-    </button>
-  )
-  const body =
-    actions == null ? (
-      button
-    ) : (
-      <div
-        className="note-card-frame"
-        style={open ? { visibility: 'hidden' } : undefined}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        onFocus={() => setFocus(true)}
-        onBlur={(event) => {
-          const next = event.relatedTarget
-          if (next instanceof Node && event.currentTarget.contains(next)) return
-          setFocus(false)
-        }}
-      >
-        {button}
-        <div
-          className="note-card-actions"
-          hidden={!showActions}
-          onClick={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          {actions}
-        </div>
-      </div>
-    )
+  const heading = title || preview || UNTITLED
+  // The description stays between the title and the labels, even when it has no words.
+  const description = title ? preview : null
   return (
     <li
       ref={setCard}
       className={frame === 'grid' ? 'board-item' : undefined}
       style={open ? { visibility: 'hidden' } : undefined}
     >
-      {body}
+      <button
+        type="button"
+        className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
+        data-pinned={card.note.isPinned ? 'true' : 'false'}
+        data-color={card.note.color ?? 'default'}
+        aria-label={cardLabel(title, preview)}
+        style={{ backgroundColor: card.note.color ?? '#ffffff' }}
+        onClick={(event) => {
+          const target = event.target
+          if (target instanceof Element && target.closest('.note-card-actions')) return
+          onOpen()
+        }}
+        onMouseEnter={actions != null ? () => setHover(true) : undefined}
+        onMouseLeave={actions != null ? () => setHover(false) : undefined}
+        onFocus={actions != null ? () => setFocus(true) : undefined}
+        onBlur={
+          actions != null
+            ? (event) => {
+                const next = event.relatedTarget
+                if (next instanceof Node && event.currentTarget.contains(next)) return
+                setFocus(false)
+              }
+            : undefined
+        }
+      >
+        {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
+        <span className="note-title">{heading}</span>
+        <span className="note-preview">{description}</span>
+        {card.labels.length > 0 ? (
+          <span className="note-chips">
+            {card.labels.map((label) => (
+              <span key={label.id} className="note-chip">
+                {label.name}
+              </span>
+            ))}
+          </span>
+        ) : null}
+        {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
+        {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
+        {actions != null ? (
+          <div
+            className={showActions ? 'note-card-actions is-shown' : 'note-card-actions'}
+            style={{
+              visibility: showActions ? 'visible' : 'hidden',
+              pointerEvents: showActions ? 'auto' : 'none',
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {actions}
+          </div>
+        ) : null}
+      </button>
       {children}
     </li>
   )

@@ -8,16 +8,18 @@ test('opens a card in a modal without moving the board, and Esc saves the edit',
     await createNote(page, name, `${name} body`)
   }
   await page.evaluate(() => window.scrollTo(0, 60))
+  const three = page.getByRole('button', { name: 'Three, Three body', exact: true })
+  await three.scrollIntoViewIfNeeded()
   const scrollBefore = await page.evaluate(() => window.scrollY)
   expect(scrollBefore).toBeGreaterThan(0)
   const before = await cardBoxes(page)
 
-  await page.getByRole('button', { name: 'Three, Three body', exact: true }).click()
+  await three.click()
   const dialog = page.getByRole('dialog', { name: 'Note' })
   await expect(dialog).toBeVisible()
   await expect(dialog).toHaveAttribute('aria-modal', 'true')
   await expect(dialog.getByLabel('Title', { exact: true })).toBeFocused()
-  await expect(page.getByRole('button', { name: 'Three, Three body', exact: true })).toBeHidden()
+  await expect(three).toBeHidden()
 
   expect(await cardBoxes(page)).toEqual(before)
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore)

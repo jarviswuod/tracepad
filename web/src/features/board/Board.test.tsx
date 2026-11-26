@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { deleteDB } from 'idb'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -19,6 +22,7 @@ async function open() {
 
 afterEach(async () => {
   cleanup()
+  document.getElementById('tracepad-board-css')?.remove()
   opened.splice(0).forEach((db) => db.close())
   await Promise.all(names.splice(0).map((name) => deleteDB(name)))
 })
@@ -226,13 +230,12 @@ describe('board', () => {
     await renderHome(db)
 
     const card = await screen.findByRole('button', { name: 'Hover, me' })
-    const frame = card.closest('.note-card-frame')
-    expect(frame).not.toBeNull()
+    expect(card.closest('.note-card-frame')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
 
-    fireEvent.mouseEnter(frame!)
+    fireEvent.mouseEnter(card)
     expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Remind me' })).toBeInTheDocument()
     const more = screen.getByRole('button', { name: 'More' })
@@ -247,7 +250,7 @@ describe('board', () => {
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    fireEvent.mouseLeave(frame!)
+    fireEvent.mouseLeave(card)
     expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
 
     fireEvent.focus(card)
@@ -255,7 +258,7 @@ describe('board', () => {
     fireEvent.blur(card)
     expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
 
-    fireEvent.mouseEnter(frame!)
+    fireEvent.mouseEnter(card)
     fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Hover, me' })).toHaveAttribute('data-pinned', 'true'))
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
@@ -264,4 +267,82 @@ describe('board', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hover, me' }))
     expect(await screen.findByLabelText('Title')).toHaveValue('Hover')
   })
+
+  it('keeps the action row in the card so hover does not change its height', async () => {
+    installBoardCss()
+    const db = await open()
+    await store(db, note('steady', { updatedAt: '2026-11-24T12:00:00.000Z' }), { title: 'Steady', body: 'line' })
+    await store(db, note('blank', { updatedAt: '2026-11-24T11:00:00.000Z' }), { title: 'Blank', body: '' })
+    await db.put('labels', { id: 'work', userId: null, name: 'Work', updatedAt: now })
+    await db.put('noteLabels', { noteId: 'steady', labelId: 'work', isRemoved: false, updatedAt: now })
+    await renderHome(db)
+
+    const card = await screen.findByRole('button', { name: 'Steady, line' })
+    const actions = card.querySelector('.note-card-actions')
+    const preview = card.querySelector('.note-preview')
+    expect(actions).not.toBeNull()
+    expect(preview).not.toBeNull()
+    expect(actions?.parentElement).toBe(card)
+    expect(card.lastElementChild).toBe(actions)
+    expect(card.querySelector('.note-card-actions-slot')).toBeNull()
+    expect(card.closest('.note-card-frame')).toBeNull()
+    expect(actions).not.toHaveAttribute('hidden')
+    expect(actions).not.toHaveClass('is-shown')
+    expect(actions).toHaveStyle({ visibility: 'hidden', pointerEvents: 'none' })
+    expect(getComputedStyle(actions!).display).toBe('flex')
+    expect(getComputedStyle(actions!).display).not.toBe('none')
+    expect(getComputedStyle(actions!).position).toBe('static')
+    expect(getComputedStyle(actions!).gap).toBe('8px')
+    expect(getComputedStyle(card).paddingTop).toBe('12px')
+    expect(getComputedStyle(card).paddingRight).toBe('16px')
+    expect(getComputedStyle(card).paddingBottom).toBe('12px')
+    expect(getComputedStyle(card).paddingLeft).toBe('16px')
+
+    const title = card.querySelector('.note-title')
+    const chips = card.querySelector('.note-chips')
+    expect(title?.nextElementSibling).toBe(preview)
+    expect(preview?.nextElementSibling).toBe(chips)
+    expect(chips?.nextElementSibling).toBe(actions)
+    expect(preview).toHaveTextContent('line')
+    expectMinHeight(preview!, 4.5)
+
+    const blank = screen.getByRole('button', { name: 'Blank' })
+    const blankPreview = blank.querySelector('.note-preview')
+    expect(blankPreview).not.toBeNull()
+    expect(blankPreview).toHaveTextContent('')
+    expect(blank.querySelector('.note-title')?.nextElementSibling).toBe(blankPreview)
+    expectMinHeight(blankPreview!, 4.5)
+
+    const before = card.getBoundingClientRect().height
+    const blankBefore = blank.getBoundingClientRect().top
+    fireEvent.mouseEnter(card)
+    expect(actions).toHaveClass('is-shown')
+    expect(actions).toHaveStyle({ visibility: 'visible', pointerEvents: 'auto' })
+    expect(actions).not.toHaveAttribute('hidden')
+    expect(getComputedStyle(actions!).display).not.toBe('none')
+    expect(card.getBoundingClientRect().height).toBe(before)
+    expect(blank.getBoundingClientRect().top).toBe(blankBefore)
+
+    fireEvent.mouseLeave(card)
+    expect(actions).toHaveStyle({ visibility: 'hidden', pointerEvents: 'none' })
+    expect(card.getBoundingClientRect().height).toBe(before)
+    expect(blank.getBoundingClientRect().top).toBe(blankBefore)
+  })
 })
+
+const boardCss = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'board.css'), 'utf8')
+
+function installBoardCss() {
+  document.getElementById('tracepad-board-css')?.remove()
+  const style = document.createElement('style')
+  style.id = 'tracepad-board-css'
+  style.textContent = boardCss
+  document.head.appendChild(style)
+}
+
+function expectMinHeight(element: Element, rems: number) {
+  const min = getComputedStyle(element).minHeight
+  const root = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+  const px = min.endsWith('rem') ? Number.parseFloat(min) * root : Number.parseFloat(min)
+  expect(px).toBeCloseTo(rems * root, 1)
+}
