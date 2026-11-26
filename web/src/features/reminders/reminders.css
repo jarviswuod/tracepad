@@ -97,6 +97,18 @@
   padding: 0.45rem 0;
 }
 
+.note-card-actions .reminder-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0;
+  border: 0;
+  background: transparent;
+  color: #202124;
+  font: inherit;
+  cursor: pointer;
+}
+
 .reminder-fields {
   padding: 0.35rem 1rem 0.5rem;
 }

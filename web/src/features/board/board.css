@@ -304,6 +304,11 @@
   min-width: 0;
 }
 
+.note-card-frame {
+  position: relative;
+  width: 100%;
+}
+
 .note-card {
   display: flex;
   flex-direction: column;
@@ -313,11 +318,49 @@
   box-sizing: border-box;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  padding: 0.85rem 1rem;
+  padding: 12px 16px;
   text-align: left;
   font: inherit;
   color: inherit;
   cursor: pointer;
+}
+
+/* Reserves the action row so the title stays above the icons. */
+.note-card-actions-slot {
+  display: block;
+  flex: none;
+  height: 40px;
+}
+
+.note-card-actions-slot[hidden] {
+  display: none;
+}
+
+.note-card-actions {
+  position: absolute;
+  z-index: 1;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+}
+
+.note-card-actions[hidden] {
+  display: none;
+}
+
+.note-card-actions > * {
+  flex: none;
+}
+
+.board-item:hover:not(.muuri-item-dragging),
+.board-item:focus-within:not(.muuri-item-dragging) {
+  z-index: 2;
 }
 
 /* The bar sits on the outer edge. The card's border is 1px outside the padding edge. */

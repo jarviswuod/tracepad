@@ -69,8 +69,10 @@
 }
 
 .editor textarea {
-  min-height: 5rem;
-  resize: vertical;
+  box-sizing: border-box;
+  min-height: 1.5rem;
+  resize: none;
+  overflow: hidden;
   font-size: 1rem;
   line-height: 1.5;
   outline: none;
@@ -84,13 +86,6 @@
 .editor textarea:focus,
 .editor input.checklist-text:focus {
   outline: none;
-}
-
-.editor textarea.editor-body-expand {
-  box-sizing: border-box;
-  min-height: 1.5rem;
-  resize: none;
-  overflow: hidden;
 }
 
 .checklist {

@@ -92,8 +92,8 @@ async function createNote(page: Page, title: string, body: string) {
 function cardLabels(page: Page): Promise<string[]> {
   return page
     .getByRole('list', { name: 'Board' })
-    .getByRole('button')
-    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') ?? ''))
+    .locator('button.note-card:visible')
+    .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label') ?? ''))
 }
 
 function columnCount(page: Page): Promise<number> {

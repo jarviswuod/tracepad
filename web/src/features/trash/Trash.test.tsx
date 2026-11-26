@@ -77,8 +77,9 @@ async function renderHome(db: TracepadDatabase) {
 }
 
 async function trashOpenNote() {
-  fireEvent.click(await screen.findByRole('button', { name: 'More' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete note' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Note' })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+  fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Delete note' }))
 }
 
 function Probe() {

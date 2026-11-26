@@ -127,8 +127,9 @@ function HistoryHarness({ history, children }: { history: MemoryHistory; childre
 }
 
 async function openVersionHistory() {
-  fireEvent.click(await screen.findByRole('button', { name: 'More' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Version history' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Note' })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'More' }))
+  fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Version history' }))
 }
 
 async function historyList() {

@@ -219,4 +219,49 @@ describe('board', () => {
     expect(screen.getByRole('button', { name: 'Old, b' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Gone, c' })).not.toBeInTheDocument()
   })
+
+  it('reveals card actions on hover or focus, and Pin does not open the note', async () => {
+    const db = await open()
+    await store(db, note('hover'), { title: 'Hover', body: 'me' })
+    await renderHome(db)
+
+    const card = await screen.findByRole('button', { name: 'Hover, me' })
+    const frame = card.closest('.note-card-frame')
+    expect(frame).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(frame!)
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remind me' })).toBeInTheDocument()
+    const more = screen.getByRole('button', { name: 'More' })
+    fireEvent.click(more)
+    expect(within(screen.getByRole('menu', { name: 'More' })).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+      'Archive',
+      'Change labels',
+      'Colors',
+      'Version history',
+      'Delete note',
+    ])
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.mouseLeave(frame!)
+    expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
+
+    fireEvent.focus(card)
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument()
+    fireEvent.blur(card)
+    expect(screen.queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(frame!)
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Hover, me' })).toHaveAttribute('data-pinned', 'true'))
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pinned' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hover, me' }))
+    expect(await screen.findByLabelText('Title')).toHaveValue('Hover')
+  })
 })

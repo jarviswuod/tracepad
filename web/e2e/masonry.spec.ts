@@ -40,6 +40,8 @@ test('grid packs by height, drag order survives reload, and list stays one colum
   await expect.poll(() => cardLabels(page)).toEqual(whileSearching)
   await expect(page.getByLabel('Sort')).toHaveValue('edited')
   await page.getByLabel('Search').fill('')
+  // A hovered card grows to fit its action row, so the pointer has to leave first.
+  await page.mouse.move(0, 0)
 
   await expect.poll(async () => packed(later, short, long)).toBe(true)
   await drag(page, short, later)
@@ -60,8 +62,9 @@ test('grid packs by height, drag order survives reload, and list stays one colum
   await expect.poll(() => cardLabels(page)).toEqual(['Long, Alpha edited', 'Later, Alpha yo', 'Short, Alpha hi'])
 
   await later.click()
-  await page.getByRole('button', { name: 'Pin', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Note' }).getByRole('button', { name: 'Close' }).click()
+  const pinned = page.getByRole('dialog', { name: 'Note' })
+  await pinned.getByRole('button', { name: 'Pin', exact: true }).click()
+  await pinned.getByRole('button', { name: 'Close' }).click()
   await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Others' })).toBeVisible()
   const others = page.getByRole('list', { name: 'Others' })
@@ -83,8 +86,8 @@ async function createNote(page: Page, title: string, body: string) {
 function cardLabels(page: Page): Promise<string[]> {
   return page
     .getByRole('list', { name: 'Board' })
-    .getByRole('button')
-    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') ?? ''))
+    .locator('button.note-card:visible')
+    .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label') ?? ''))
 }
 
 function columnCount(page: Page): Promise<number> {

@@ -55,8 +55,6 @@ type EditorProps = {
   showFooter?: boolean
   /** More on a new note from "Take a note". A saved note uses the modal toolbar. */
   more?: ReactNode
-  /** Grow the body so a long note scrolls in the modal, not inside the field. */
-  expandBody?: boolean
   ref?: Ref<EditorHandle>
 }
 
@@ -127,7 +125,6 @@ export function Editor({
   titleAside,
   showFooter = true,
   more,
-  expandBody = false,
   ref,
 }: EditorProps) {
   const initial = snapshotFrom(openedVersion)
@@ -376,10 +373,10 @@ export function Editor({
 
   useLayoutEffect(() => {
     const element = bodyRef.current
-    if (!element || !expandBody || kind !== 'text') return
+    if (!element || kind !== 'text') return
     element.style.height = 'auto'
     if (element.scrollHeight > 0) element.style.height = `${element.scrollHeight}px`
-  }, [body, expandBody, kind])
+  }, [body, kind])
 
   function changeTitle(value: string) {
     contentRef.current = { ...contentRef.current, title: value }
@@ -573,7 +570,8 @@ export function Editor({
       ) : (
         <textarea
           ref={bodyRef}
-          className={expandBody ? 'editor-body-expand' : undefined}
+          className="editor-body-expand"
+          rows={1}
           aria-label="Body"
           placeholder="Take a note"
           value={body}

@@ -136,11 +136,13 @@
 
 .note-modal-actions .note-menu-item:hover,
 .note-modal-actions .note-create-label:hover,
-.editor-actions .note-more-panel button:hover {
+.editor-actions .note-more-panel button:hover,
+.note-card-actions .note-more-panel button:hover {
   background: rgba(95, 99, 104, 0.08);
 }
 
-.editor-actions .note-more-panel button {
+.editor-actions .note-more-panel button,
+.note-card-actions .note-more-panel button {
   display: block;
   width: 100%;
   margin: 0;
@@ -160,7 +162,8 @@
 }
 
 .editor-actions .note-more-panel button.note-menu-item.icon-button,
-.note-modal-actions button.note-menu-item.icon-button {
+.note-modal-actions button.note-menu-item.icon-button,
+.note-card-actions .note-more-panel button.note-menu-item.icon-button {
   display: flex;
   width: 100%;
   height: auto;

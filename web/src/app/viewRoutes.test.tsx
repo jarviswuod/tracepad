@@ -303,8 +303,9 @@ describe('view routes', () => {
 
     const first = mount()
     fireEvent.click(await screen.findByRole('button', { name: 'Groceries, beta' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'More' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Version history' }))
+    const opened = await screen.findByRole('dialog', { name: 'Note' })
+    fireEvent.click(within(opened).getByRole('button', { name: 'More' }))
+    fireEvent.click(within(opened).getByRole('menuitem', { name: 'Version history' }))
     await screen.findByRole('list', { name: 'History' })
     expect(history.location.pathname).toBe(`/history/${noteId}`)
 

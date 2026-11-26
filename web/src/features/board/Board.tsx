@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { BoardCard, BoardSort, BoardView, TimeSort } from '../../data/notes'
 import { groupBoardByDay, type DayGroup } from '../../domain/boardDays'
@@ -41,6 +41,26 @@ type BoardProps = {
   searching: boolean
   /** Grid drag. `orderedIds` is the pack's new order, pinned and others separate. */
   onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
+  /** Pin, Remind me, and More for a closed card. Omitted on history and in the trash. */
+  cardActions?: (card: BoardCard) => ReactNode
+}
+
+const NARROW_BOARD = '(max-width: 720px)'
+
+function useNarrowBoard(): boolean {
+  const [narrow, setNarrow] = useState(() => {
+    if (typeof window.matchMedia !== 'function') return false
+    return window.matchMedia(NARROW_BOARD).matches
+  })
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia(NARROW_BOARD)
+    const apply = () => setNarrow(media.matches)
+    apply()
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [])
+  return narrow
 }
 
 function cardLabel(title: string | null, preview: string | null): string {
@@ -65,6 +85,8 @@ export function NoteCard({
   onOpen,
   markArchived = false,
   frame = 'list',
+  actions,
+  actionsAlways = false,
   children,
 }: {
   card: BoardCard
@@ -75,10 +97,17 @@ export function NoteCard({
   /** Grid cards are Muuri items. List and history stay a plain list item. */
   frame?: 'list' | 'grid'
   onOpen: () => void
+  /** Pin, Remind me, and More. Shown on hover, focus, or a narrow screen. */
+  actions?: ReactNode
+  /** A narrow screen has no hover, so the row stays visible. */
+  actionsAlways?: boolean
   children?: ReactNode
 }) {
+  const [hover, setHover] = useState(false)
+  const [focus, setFocus] = useState(false)
   const title = card.version.title
   const preview = displayedBody(card.version)
+  const showActions = actions != null && !open && (actionsAlways || hover || focus)
   const button = (
     <button
       type="button"
@@ -89,6 +118,7 @@ export function NoteCard({
       aria-label={cardLabel(title, preview)}
       style={{ backgroundColor: card.note.color ?? '#ffffff' }}
       onClick={onOpen}
+      onFocus={() => setFocus(true)}
     >
       {markArchived && card.note.isArchived ? <span className="note-archived-bar" /> : null}
       {title ? <span className="note-title">{title}</span> : null}
@@ -105,19 +135,48 @@ export function NoteCard({
       ) : null}
       {markArchived && card.note.isArchived ? <span className="note-archived">Archived</span> : null}
       {card.daysLeft != null ? <span className="days-left">{daysLeftLabel(card.daysLeft)}</span> : null}
+      {actions != null ? <span className="note-card-actions-slot" hidden={!showActions} /> : null}
     </button>
   )
+  const body =
+    actions == null ? (
+      button
+    ) : (
+      <div
+        className="note-card-frame"
+        data-note-id={card.note.id}
+        style={open ? { visibility: 'hidden' } : undefined}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onFocus={() => setFocus(true)}
+        onBlur={(event) => {
+          const next = event.relatedTarget
+          if (next instanceof Node && event.currentTarget.contains(next)) return
+          setFocus(false)
+        }}
+      >
+        {button}
+        <div
+          className="note-card-actions"
+          hidden={!showActions}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {actions}
+        </div>
+      </div>
+    )
   if (frame === 'grid') {
     return (
       <li className="board-item" data-note-id={card.note.id} style={open ? { visibility: 'hidden' } : undefined}>
-        {button}
+        {body}
         {children}
       </li>
     )
   }
   return (
     <li style={open ? { visibility: 'hidden' } : undefined}>
-      {button}
+      {body}
       {children}
     </li>
   )
@@ -231,6 +290,8 @@ function DayCards({
   onRestore,
   onDeleteForever,
   onReorder,
+  cardActions,
+  actionsAlways,
 }: {
   day: DayGroup<BoardCard>
   packLabel: string
@@ -243,9 +304,12 @@ function DayCards({
   onRestore: (noteId: Uuid) => void
   onDeleteForever: (noteId: Uuid) => void
   onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
+  cardActions?: (card: BoardCard) => ReactNode
+  actionsAlways: boolean
 }) {
   const items = day.cards.map((card) => {
     const label = cardLabel(card.version.title, displayedBody(card.version))
+    const actions = inTrash || card.note.trashedAt != null ? undefined : cardActions?.(card)
     return (
       <NoteCard
         key={card.note.id}
@@ -253,6 +317,8 @@ function DayCards({
         frame={layout === 'grid' ? 'grid' : 'list'}
         open={card.note.id === openNoteId}
         markArchived={markArchived}
+        actions={actions}
+        actionsAlways={actionsAlways}
         onOpen={() => onOpen(card.note.id)}
       >
         {inTrash && card.daysLeft != null ? (
@@ -309,6 +375,8 @@ function DaySection({
   onRestore: (noteId: Uuid) => void
   onDeleteForever: (noteId: Uuid) => void
   onReorder: (noteId: Uuid, orderedIds: readonly Uuid[]) => void
+  cardActions?: (card: BoardCard) => ReactNode
+  actionsAlways: boolean
 }) {
   if (days.length === 0) return null
   return (
@@ -348,7 +416,9 @@ export function Board({
   onDeleteLabel,
   searching,
   onReorder,
+  cardActions,
 }: BoardProps) {
+  const narrow = useNarrowBoard()
   const grouped = groupBoardByDay(cards, sort, new Date(), customBase)
   // Trash keeps the pin flag but does not show it. Search is not the trash list.
   const inTrash = view.kind === 'trash' && !searching
@@ -365,6 +435,8 @@ export function Board({
     onRestore,
     onDeleteForever,
     onReorder,
+    cardActions,
+    actionsAlways: narrow,
   }
   // Moving a note to another day remounts its card. Focus follows the new card.
   const focusedCard = useRef<HTMLElement | null>(null)

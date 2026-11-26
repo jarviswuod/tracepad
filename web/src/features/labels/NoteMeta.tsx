@@ -66,6 +66,8 @@ type NoteToolbarProps = NoteToolbarBase &
     | { scope: "create" }
     | {
         scope: "note";
+        /** The card row has its own Remind me, so More leaves that item out. */
+        includeRemind?: boolean;
         trashed: boolean;
         color: string | null;
         labels: Label[];
@@ -148,6 +150,7 @@ export function NoteToolbar(props: NoteToolbarProps) {
   }
 
   const note = props.scope === "note" ? props : null;
+  const showRemind = props.scope === "create" || props.includeRemind !== false;
   const trimmed = query.trim();
   const needle = trimmed.toLowerCase();
   const filtered =
@@ -181,13 +184,15 @@ export function NoteToolbar(props: NoteToolbarProps) {
       />
       {panel === "menu" ? (
         <div className="note-more-panel" role="menu" aria-label="More">
-          <IconButton
-            role="menuitem"
-            className="note-menu-item"
-            label="Remind me"
-            icon="remind"
-            onClick={() => setPanel("reminder")}
-          />
+          {showRemind ? (
+            <IconButton
+              role="menuitem"
+              className="note-menu-item"
+              label="Remind me"
+              icon="remind"
+              onClick={() => setPanel("reminder")}
+            />
+          ) : null}
           <IconButton
             role="menuitem"
             className="note-menu-item"

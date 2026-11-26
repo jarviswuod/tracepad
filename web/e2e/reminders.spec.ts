@@ -57,9 +57,10 @@ test('refuses a past reminder time', async ({ page }) => {
   await page.getByLabel('Body').fill('Too late')
   await page.getByRole('heading', { name: 'Tracepad' }).click()
   await page.getByRole('button', { name: 'Late, Too late' }).click()
+  const late = page.getByRole('dialog', { name: 'Note' })
 
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Remind me', exact: true }).click()
+  await late.getByRole('button', { name: 'More', exact: true }).click()
+  await late.getByRole('menuitem', { name: 'Remind me', exact: true }).click()
   await page.getByLabel('Date and time').fill('2000-01-01T00:00')
   await page.getByRole('button', { name: 'Save' }).click()
 
@@ -75,9 +76,10 @@ test('fires a reminder a few seconds ahead and opens the note', async ({ page })
   await page.getByLabel('Body').fill('Milk')
   await page.getByRole('heading', { name: 'Tracepad' }).click()
   await page.getByRole('button', { name: 'Groceries, Milk' }).click()
+  const note = page.getByRole('dialog', { name: 'Note' })
 
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Remind me', exact: true }).click()
+  await note.getByRole('button', { name: 'More', exact: true }).click()
+  await note.getByRole('menuitem', { name: 'Remind me', exact: true }).click()
   const when = upcomingMinute(8_000)
   const waitMs = when.getTime() - Date.now() + 15_000
   await page.getByLabel('Date and time').fill(minuteValue(when))

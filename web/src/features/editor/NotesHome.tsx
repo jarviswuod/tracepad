@@ -30,6 +30,7 @@ import { sortPositionForDrag } from '../../domain/boardOrder'
 import type { Label, Note, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
+import { CardActions } from '../board/CardActions'
 import { labelPath, pathsMatch, viewFromPath } from '../board/viewPath'
 import { searchBoardCards } from '../search/filterBoard'
 import { readSearchQuery } from '../search/searchUrl'
@@ -224,65 +225,80 @@ export function NotesHome({
     else await refresh()
   }
 
+  async function pinCard(noteId: Uuid, pinned: boolean) {
+    const changed = await setPinned(db, { noteId, pinned, deviceId: await currentDeviceId() })
+    if (!changed) return
+    setSession((next) => (next?.noteId === noteId ? { ...next, isPinned: pinned } : next))
+    await refresh()
+  }
+
   async function changePin(pinned: boolean) {
     const current = session
     if (!current?.version) return
-    const changed = await setPinned(db, { noteId: current.noteId, pinned, deviceId: await currentDeviceId() })
-    if (!changed) return
-    setSession((next) => (next?.noteId === current.noteId ? { ...next, isPinned: pinned } : next))
-    await refresh()
+    await pinCard(current.noteId, pinned)
   }
 
   function ensureNoteSaved(): Promise<void> {
     return editorRef.current?.ensureSaved() ?? Promise.resolve()
   }
 
+  async function archiveCard(noteId: Uuid, archived: boolean) {
+    if (session?.noteId === noteId) {
+      if (session.isTrashed) return
+      await ensureNoteSaved()
+    }
+    const changed = await setArchived(db, { noteId, archived, deviceId: await currentDeviceId() })
+    if (!changed) return
+    setSession((next) => (next?.noteId === noteId ? { ...next, isArchived: archived } : next))
+    await refresh()
+  }
+
   async function changeArchive(archived: boolean) {
     const current = session
     if (!current || current.isTrashed) return
-    await ensureNoteSaved()
-    const changed = await setArchived(db, {
-      noteId: current.noteId,
-      archived,
-      deviceId: await currentDeviceId(),
-    })
+    await archiveCard(current.noteId, archived)
+  }
+
+  async function colorCard(noteId: Uuid, color: string | null) {
+    const changed = await setNoteColor(db, { noteId, color })
     if (!changed) return
-    setSession((next) => (next?.noteId === current.noteId ? { ...next, isArchived: archived } : next))
+    setSession((next) => (next?.noteId === noteId ? { ...next, color } : next))
     await refresh()
   }
 
   async function changeColor(color: string | null) {
     const current = session
     if (!current?.version) return
-    const changed = await setNoteColor(db, { noteId: current.noteId, color })
-    if (!changed) return
-    setSession((next) => (next?.noteId === current.noteId ? { ...next, color } : next))
+    await colorCard(current.noteId, color)
+  }
+
+  async function toggleCardLabel(noteId: Uuid, labelId: Uuid, on: boolean) {
+    const device = await currentDeviceId()
+    if (on) await addLabelToNote(db, { noteId, labelId, deviceId: device })
+    else await removeLabelFromNote(db, { noteId, labelId, deviceId: device })
     await refresh()
   }
 
   async function toggleLabel(labelId: Uuid, on: boolean) {
     const current = session
     if (!current?.version) return
-    const device = await currentDeviceId()
-    if (on) await addLabelToNote(db, { noteId: current.noteId, labelId, deviceId: device })
-    else await removeLabelFromNote(db, { noteId: current.noteId, labelId, deviceId: device })
+    await toggleCardLabel(current.noteId, labelId, on)
+  }
+
+  async function addCardLabel(noteId: Uuid, name: string) {
+    const trimmed = name.trim()
+    if (trimmed === '') return
+    const existing = labels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase())
+    const label = existing ?? (await createLabel(db, { name: trimmed }))
+    if (!label) return
+    await addLabelToNote(db, { noteId, labelId: label.id, deviceId: await currentDeviceId() })
     await refresh()
   }
 
   async function addLabelByName(name: string) {
     const current = session
     if (!current?.version) return
-    const trimmed = name.trim()
-    if (trimmed === '') return
-    const existing = labels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase())
-    const label = existing ?? (await createLabel(db, { name: trimmed }))
-    if (!label) return
-    await addLabelToNote(db, {
-      noteId: current.noteId,
-      labelId: label.id,
-      deviceId: await currentDeviceId(),
-    })
-    await refresh()
+    await addCardLabel(current.noteId, name)
   }
 
   async function createFromSidebar(name: string): Promise<boolean> {
@@ -313,6 +329,24 @@ export function NotesHome({
       return
     }
     await refresh()
+  }
+
+  async function deleteCard(noteId: Uuid) {
+    if (session?.noteId === noteId && session.version != null) {
+      await trashSession()
+      return
+    }
+    const moved = await moveToTrash(db, { noteId, deviceId: await currentDeviceId() })
+    if (moved) setUndoId(noteId)
+    await refresh()
+  }
+
+  function openCardHistory(noteId: Uuid) {
+    const leaving = editorRef.current?.leave() ?? Promise.resolve()
+    void leaving.then(
+      () => onHistory(noteId),
+      () => onHistory(noteId),
+    )
   }
 
   async function trashSession() {
@@ -410,7 +444,6 @@ export function NotesHome({
         trashed={session.isTrashed}
         onRestore={() => void restoreOpenNote()}
         showFooter={session.version == null}
-        expandBody={session.version != null}
         more={
           session.version == null ? (
             <NoteToolbar
@@ -471,6 +504,26 @@ export function NotesHome({
         onDeleteLabel={(labelId) => void deleteFromSidebar(labelId)}
         searching={searching}
         onReorder={(noteId, orderedIds) => void reorder(noteId, orderedIds)}
+        cardActions={
+          deviceId
+            ? (card) => (
+                <CardActions
+                  card={card}
+                  db={db}
+                  deviceId={deviceId}
+                  labels={labels}
+                  onPin={(pinned) => void pinCard(card.note.id, pinned)}
+                  onArchive={(archived) => void archiveCard(card.note.id, archived)}
+                  onColor={(color) => void colorCard(card.note.id, color)}
+                  onToggleLabel={(labelId, on) => void toggleCardLabel(card.note.id, labelId, on)}
+                  onAddLabel={(name) => void addCardLabel(card.note.id, name)}
+                  onHistory={() => openCardHistory(card.note.id)}
+                  onDelete={() => void deleteCard(card.note.id)}
+                  onReminderChanged={() => void refresh()}
+                />
+              )
+            : undefined
+        }
       />
       {opened && editor ? (
         <NoteModal
