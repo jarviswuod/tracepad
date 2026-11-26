@@ -9,6 +9,7 @@ import { SideLink } from '../../ui/SideLink'
 import { useSideNames } from '../../ui/sideNames'
 import { LabelSection } from '../labels/LabelSection'
 import { NotePack } from './NotePack'
+import { noteCardButton, noteIdFromCard, useNoteCardRef } from './noteCardIndex'
 import { labelPath, pathsMatch, viewFromPath } from './viewPath'
 import './board.css'
 
@@ -105,6 +106,7 @@ export function NoteCard({
 }) {
   const [hover, setHover] = useState(false)
   const [focus, setFocus] = useState(false)
+  const setCard = useNoteCardRef(card.note.id)
   const title = card.version.title
   const preview = displayedBody(card.version)
   const showActions = actions != null && !open && (actionsAlways || hover || focus)
@@ -112,7 +114,6 @@ export function NoteCard({
     <button
       type="button"
       className={markArchived && card.note.isArchived ? 'note-card note-card-marked' : 'note-card'}
-      data-note-id={card.note.id}
       data-pinned={card.note.isPinned ? 'true' : 'false'}
       data-color={card.note.color ?? 'default'}
       aria-label={cardLabel(title, preview)}
@@ -144,7 +145,6 @@ export function NoteCard({
     ) : (
       <div
         className="note-card-frame"
-        data-note-id={card.note.id}
         style={open ? { visibility: 'hidden' } : undefined}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
@@ -166,16 +166,12 @@ export function NoteCard({
         </div>
       </div>
     )
-  if (frame === 'grid') {
-    return (
-      <li className="board-item" data-note-id={card.note.id} style={open ? { visibility: 'hidden' } : undefined}>
-        {body}
-        {children}
-      </li>
-    )
-  }
   return (
-    <li style={open ? { visibility: 'hidden' } : undefined}>
+    <li
+      ref={setCard}
+      className={frame === 'grid' ? 'board-item' : undefined}
+      style={open ? { visibility: 'hidden' } : undefined}
+    >
       {body}
       {children}
     </li>
@@ -439,26 +435,25 @@ export function Board({
     actionsAlways: narrow,
   }
   // Moving a note to another day remounts its card. Focus follows the new card.
-  const focusedCard = useRef<HTMLElement | null>(null)
+  const focusedCard = useRef<{ element: HTMLElement; noteId: Uuid } | null>(null)
   useEffect(() => {
     function onFocusIn(event: FocusEvent) {
       const target = event.target
-      if (target instanceof HTMLElement && target.classList.contains('note-card')) {
-        focusedCard.current = target
-      }
+      if (!(target instanceof HTMLElement) || !target.classList.contains('note-card')) return
+      const noteId = noteIdFromCard(target)
+      if (!noteId) return
+      focusedCard.current = { element: target, noteId }
     }
     document.addEventListener('focusin', onFocusIn)
     return () => document.removeEventListener('focusin', onFocusIn)
   }, [])
   useLayoutEffect(() => {
     const previous = focusedCard.current
-    if (!previous || previous.isConnected) return
-    const id = previous.getAttribute('data-note-id')
-    if (!id) return
-    const next = document.querySelector<HTMLElement>(`.note-card[data-note-id="${id}"]`)
+    if (!previous || previous.element.isConnected) return
+    const next = noteCardButton(previous.noteId)
     if (!next) return
     next.focus()
-    focusedCard.current = next
+    focusedCard.current = { element: next, noteId: previous.noteId }
   })
 
   return (

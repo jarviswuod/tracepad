@@ -11,6 +11,7 @@ import {
   textToChecklistItems,
   type NoteContent,
 } from '../../domain/versioning'
+import { noteIdFromCard } from '../board/noteCardIndex'
 import { IconButton } from '../../ui/icons'
 import { SavingDot, savingDotState } from './SavingDot'
 
@@ -347,7 +348,8 @@ export function Editor({
       if (!card || card.contains(target)) return
       if (card.closest('[aria-modal="true"]')?.contains(target)) return
       if (target instanceof Element && target.closest('.dialog, .dialog-backdrop')) return
-      if (target instanceof Element && target.closest('[data-note-id]')) return
+      // Opening another card is that card's click, not a press outside this note.
+      if (noteIdFromCard(target)) return
       void requestClose()
     }
 

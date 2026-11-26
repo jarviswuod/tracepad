@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openTracepadDb, type TracepadDatabase } from '../data/db'
 import type { Note, NoteVersion } from '../domain/types'
+import { noteCardElement } from '../features/board/noteCardIndex'
 import { AppRoutes } from './AppRoutes'
 
 const opened: TracepadDatabase[] = []
@@ -86,9 +87,9 @@ async function openCard(name: string) {
 }
 
 function cardSlot(id: string): HTMLElement {
-  const card = document.querySelector<HTMLElement>(`.note-card[data-note-id="${id}"]`)
-  if (!card?.parentElement) throw new Error(`no card ${id}`)
-  return card.parentElement
+  const slot = noteCardElement(id)
+  if (!slot) throw new Error(`no card ${id}`)
+  return slot
 }
 
 describe('opening a card', () => {

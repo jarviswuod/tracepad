@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import Muuri, { type Item } from 'muuri'
 import type { Uuid } from '../../domain/types'
+import { noteIdFromCard } from './noteCardIndex'
 
 const DRAG_START_DISTANCE = 8
 
@@ -87,10 +88,15 @@ export function NotePack({ layoutKey, dragEnabled, label, onReorder, children }:
       ignoreClick.current = true
     }
     const onDragEnd = (item: Item) => {
-      const draggedId = item.getElement()?.getAttribute('data-note-id')
+      const draggedId = noteIdFromCard(item.getElement() ?? null)
       if (!draggedId) return
-      const ids = grid.getItems().map((entry) => entry.getElement()?.getAttribute('data-note-id') ?? '')
-      if (ids.length === 0 || ids.some((id) => id === '')) return
+      const ids: Uuid[] = []
+      for (const entry of grid.getItems()) {
+        const id = noteIdFromCard(entry.getElement() ?? null)
+        if (!id) return
+        ids.push(id)
+      }
+      if (ids.length === 0) return
       onReorderRef.current(draggedId, ids)
       window.setTimeout(() => {
         ignoreClick.current = false

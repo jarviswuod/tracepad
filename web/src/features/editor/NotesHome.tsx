@@ -30,6 +30,7 @@ import { sortPositionForDrag } from '../../domain/boardOrder'
 import type { Label, Note, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
+import { noteCardButton } from '../board/noteCardIndex'
 import { CardActions } from '../board/CardActions'
 import { labelPath, pathsMatch, viewFromPath } from '../board/viewPath'
 import { searchBoardCards } from '../search/filterBoard'
@@ -531,7 +532,7 @@ export function NotesHome({
           color={opened.color}
           archivedBar={showArchivedBar}
           onClose={() => void editorRef.current?.close()}
-          returnFocusTo={() => document.querySelector<HTMLElement>(`.note-card[data-note-id="${opened.noteId}"]`)}
+          returnFocusTo={() => noteCardButton(opened.noteId)}
           toolbar={
             <NoteToolbar
               scope="note"
