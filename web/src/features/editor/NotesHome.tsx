@@ -27,7 +27,7 @@ import {
 import { deleteNoteForever, emptyTrash, moveToTrash, restoreFromTrash } from '../../data/trash'
 import type { SearchOptions } from '../../domain/search'
 import { sortPositionForDrag } from '../../domain/boardOrder'
-import type { Label, Note, NoteVersion, Uuid } from '../../domain/types'
+import type { Label, Note, NoteKind, NoteVersion, Uuid } from '../../domain/types'
 import { NoteModal } from '../../ui/NoteModal'
 import { Board, type BoardLayout } from '../board/Board'
 import { noteCardButton } from '../board/noteCardIndex'
@@ -91,6 +91,7 @@ export function NotesHome({
   const [activeLabelIds, setActiveLabelIds] = useState<Uuid[]>([])
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
+  const [checklistKind, setChecklistKind] = useState<NoteKind>('text')
   const [undoId, setUndoId] = useState<Uuid | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const location = useLocation()
@@ -163,6 +164,7 @@ export function NotesHome({
     await editorRef.current?.leave()
     const listed = await getListedNote(db, noteId)
     openIdRef.current = listed ? noteId : null
+    setChecklistKind(listed?.version.kind === 'checklist' ? 'checklist' : 'text')
     setSession(
       listed
         ? {
@@ -191,6 +193,7 @@ export function NotesHome({
 
   function startNote() {
     openIdRef.current = null
+    setChecklistKind('text')
     setSession({
       noteId: crypto.randomUUID(),
       version: null,
@@ -460,11 +463,7 @@ export function NotesHome({
             <NotePinButton isPinned={session.isPinned} onPin={(pinned) => void changePin(pinned)} />
           ) : null
         }
-        actions={
-          session.version ? (
-            <NoteContentEnd labels={labels} activeLabelIds={activeLabelIds} updatedAt={session.updatedAt} />
-          ) : null
-        }
+        onKindChange={setChecklistKind}
         onLeft={() => {
           openIdRef.current = null
           setSession(null)
@@ -533,6 +532,10 @@ export function NotesHome({
           archivedBar={showArchivedBar}
           onClose={() => void editorRef.current?.close()}
           returnFocusTo={() => noteCardButton(opened.noteId)}
+          fixedBars
+          contentEnd={
+            <NoteContentEnd labels={labels} activeLabelIds={activeLabelIds} updatedAt={opened.updatedAt} />
+          }
           toolbar={
             <NoteToolbar
               scope="note"
@@ -541,6 +544,10 @@ export function NotesHome({
               color={opened.color}
               labels={labels}
               activeLabelIds={activeLabelIds}
+              checklistKind={checklistKind}
+              onChecklist={() => {
+                void editorRef.current?.convertChecklist()
+              }}
               onArchive={(archived) => void changeArchive(archived)}
               onColor={(color) => void changeColor(color)}
               onToggleLabel={(labelId, on) => void toggleLabel(labelId, on)}

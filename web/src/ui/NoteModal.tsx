@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { IconButton } from './icons'
 import './note-modal.css'
+
+/** Set when this modal pins `.editor-actions` outside the scrolling body. */
+export type NoteModalFixedSlot = {
+  actionsEl: HTMLDivElement | null
+}
+
+export const NoteModalFixedContext = createContext<NoteModalFixedSlot | null>(null)
 
 const FOCUSABLE = [
   'a[href]',
@@ -28,6 +35,10 @@ type NoteModalProps = {
   toolbar?: ReactNode
   /** Blue bar across the top when search included this archived note. */
   archivedBar?: boolean
+  /** Label chips and the edited date, pinned under the scrolling text. */
+  contentEnd?: ReactNode
+  /** Pin `.editor-actions` under the text. The editor fills that bar. */
+  fixedBars?: boolean
   children: ReactNode
 }
 
@@ -66,9 +77,18 @@ export function NoteModal({
   size = 'note',
   toolbar,
   archivedBar = false,
+  contentEnd,
+  fixedBars = false,
   children,
 }: NoteModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const actionsHost = useRef<HTMLDivElement>(null)
+  const [actionsEl, setActionsEl] = useState<HTMLDivElement | null>(null)
+  const fixed = useMemo(() => (fixedBars ? { actionsEl } : null), [fixedBars, actionsEl])
+
+  useLayoutEffect(() => {
+    setActionsEl(fixedBars ? actionsHost.current : null)
+  }, [fixedBars])
   // Read during render, before this commit can hide the card that opened the modal.
   const [opener] = useState(() =>
     document.activeElement instanceof HTMLElement && document.activeElement !== document.body
@@ -129,35 +149,39 @@ export function NoteModal({
   }, [])
 
   return (
-    <div
-      className={size === 'labels' ? 'note-modal-backdrop note-modal-backdrop-labels' : 'note-modal-backdrop'}
-      data-testid="note-modal-backdrop"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
+    <NoteModalFixedContext.Provider value={fixed}>
       <div
-        ref={panelRef}
-        className={size === 'labels' ? 'note-modal note-modal-labels' : 'note-modal'}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        tabIndex={-1}
-        style={{ backgroundColor: color ?? '#ffffff' }}
+        className={size === 'labels' ? 'note-modal-backdrop note-modal-backdrop-labels' : 'note-modal-backdrop'}
+        data-testid="note-modal-backdrop"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose()
+        }}
       >
-        {archivedBar ? <span className="note-archived-bar" /> : null}
-        <div className="note-modal-body">{children}</div>
-        <div className="note-modal-actions">
-          {toolbar}
-          {closeText === 'Close' ? (
-            <IconButton className="note-modal-close" label="Close" icon="close" onClick={onClose} />
-          ) : (
-            <button type="button" className="note-modal-close" onClick={onClose}>
-              {closeText}
-            </button>
-          )}
+        <div
+          ref={panelRef}
+          className={size === 'labels' ? 'note-modal note-modal-labels' : 'note-modal'}
+          role="dialog"
+          aria-modal="true"
+          aria-label={label}
+          tabIndex={-1}
+          style={{ backgroundColor: color ?? '#ffffff' }}
+        >
+          {archivedBar ? <span className="note-archived-bar" /> : null}
+          <div className="note-modal-body">{children}</div>
+          {contentEnd}
+          {fixedBars ? <div className="editor-actions" ref={actionsHost} /> : null}
+          <div className="note-modal-actions">
+            {toolbar}
+            {closeText === 'Close' ? (
+              <IconButton className="note-modal-close" label="Close" icon="close" onClick={onClose} />
+            ) : (
+              <button type="button" className="note-modal-close" onClick={onClose}>
+                {closeText}
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </NoteModalFixedContext.Provider>
   )
 }

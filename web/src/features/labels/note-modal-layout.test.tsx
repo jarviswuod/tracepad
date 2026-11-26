@@ -116,11 +116,16 @@ describe('open note layout', () => {
 
     const scroller = dialog.querySelector('.note-modal-body')
     const bar = toolbar(dialog)
+    const contentEnd = chip.closest('.note-content-end')
+    const editorActions = dialog.querySelector('.editor-actions')
     expect(scroller).toContainElement(title)
     expect(scroller).toContainElement(body)
-    expect(scroller).toContainElement(chip)
-    expect(scroller).toContainElement(edited)
+    expect(contentEnd?.parentElement).toBe(dialog)
+    expect(editorActions?.parentElement).toBe(dialog)
+    expect(scroller?.contains(contentEnd)).toBe(false)
+    expect(scroller?.contains(editorActions)).toBe(false)
     expect(scroller?.contains(bar)).toBe(false)
+    expect(within(editorActions as HTMLElement).getByRole('button', { name: 'Show checkboxes' })).toBeInTheDocument()
     expect([...bar.querySelectorAll('button')].map(controlName)).toEqual(['More', 'Close'])
     expect(within(dialog).queryByRole('button', { name: 'Remind me' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
@@ -131,6 +136,7 @@ describe('open note layout', () => {
       'Archive',
       'Change labels',
       'Colors',
+      'Show checkboxes',
       'Version history',
       'Delete note',
     ])
@@ -209,6 +215,54 @@ describe('open note layout', () => {
     expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
   })
 
+  it('lists Show checkboxes in More, turns the body into items, and pins the chips outside the text', async () => {
+    const db = await open()
+    const row = note()
+    await db.put('noteVersions', version(row, 'Shopping', 'Milk\nBread'))
+    await db.put('notes', row)
+    await db.put('labels', { id: 'work', userId: null, name: 'Work', updatedAt: row.updatedAt })
+    await db.put('noteLabels', { noteId, labelId: 'work', isRemoved: false, updatedAt: row.updatedAt })
+    await renderHome(db)
+
+    const card = await screen.findByRole('button', { name: /^Shopping,/ })
+    fireEvent.mouseEnter(card)
+    fireEvent.click(within(card).getByRole('button', { name: 'More' }))
+    expect(within(screen.getByRole('menu', { name: 'More' })).queryByRole('menuitem', { name: 'Show checkboxes' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('menu', { name: 'More' })).queryByRole('menuitem', { name: 'Hide checkboxes' })).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.click(card)
+    const dialog = await screen.findByRole('dialog', { name: 'Note' })
+    const scroller = dialog.querySelector('.note-modal-body')
+    const chip = await within(dialog).findByText('Work')
+    const edited = within(dialog).getByText('Edited 3:04 PM')
+    const contentEnd = chip.closest('.note-content-end')
+    expect(contentEnd?.parentElement).toBe(dialog)
+    expect(edited.closest('.note-content-end')).toBe(contentEnd)
+    expect(scroller?.contains(contentEnd)).toBe(false)
+    expect(scroller).toContainElement(within(dialog).getByLabelText('Title'))
+    expect(scroller).toContainElement(within(dialog).getByLabelText('Body'))
+
+    fireEvent.click(within(toolbar(dialog)).getByRole('button', { name: 'More' }))
+    const menu = within(dialog).getByRole('menu', { name: 'More' })
+    expect(within(menu).getByRole('menuitem', { name: 'Show checkboxes' })).toBeInTheDocument()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Show checkboxes' }))
+
+    await waitFor(() => expect(within(dialog).getByRole('checkbox', { name: 'Tick Milk' })).toBeInTheDocument())
+    expect(within(dialog).getByRole('checkbox', { name: 'Tick Bread' })).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Body')).not.toBeInTheDocument()
+    const stored = await db.getAll('noteVersions')
+    expect(stored).toHaveLength(2)
+    const checklist = stored.find((item) => item.kind === 'checklist')
+    expect(checklist?.parentVersionId).toBe(row.currentVersionId)
+    expect(checklist?.checklistItems?.map((item) => item.text)).toEqual(['Milk', 'Bread'])
+
+    fireEvent.click(within(toolbar(dialog)).getByRole('button', { name: 'More' }))
+    expect(within(dialog).getByRole('menuitem', { name: 'Hide checkboxes' })).toBeInTheDocument()
+    expect(chip.closest('.note-content-end')?.parentElement).toBe(dialog)
+    expect(dialog.querySelector('.editor-actions')?.parentElement).toBe(dialog)
+  })
+
   it('shows Restore and Delete forever on a trashed note, and asks before deleting forever', async () => {
     const db = await open()
     const row = note({ trashedAt: new Date().toISOString() })
@@ -254,6 +308,8 @@ describe('open note layout', () => {
     expect(noteGroup.closest('.board-column')).not.toBeNull()
     expect(within(noteGroup).getByRole('button', { name: 'Move to trash' })).toBeInTheDocument()
     expect(within(noteGroup).getByRole('button', { name: 'History' })).toBeInTheDocument()
+    const checklist = within(noteGroup).getByRole('button', { name: 'Show checkboxes' })
+    expect(checklist.closest('.editor-actions')?.parentElement).toBe(noteGroup)
     expect(within(noteGroup).queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
     expect(within(noteGroup).queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
 

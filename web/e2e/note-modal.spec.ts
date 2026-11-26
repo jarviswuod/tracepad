@@ -148,6 +148,70 @@ test('a long note scrolls under a fixed toolbar, and More changes labels, color,
   await expect(page.getByRole('button', { name: /^Practise,/ })).toBeVisible()
 })
 
+test('a long note scrolls its text while the chips, the editor actions, and Close stay put', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const body = Array.from({ length: 80 }, (_, index) => `Line ${index + 1} of the long practise note`).join('\n')
+  await createNote(page, 'Practise', body)
+
+  await page.getByRole('button', { name: /^Practise, Line 1/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Note' })
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'More', exact: true }).click()
+  await dialog.getByRole('menuitem', { name: 'Change labels', exact: true }).click()
+  await dialog.getByLabel('Enter label name').fill('Practice')
+  await dialog.getByRole('button', { name: 'Create "Practice"', exact: true }).click()
+  const chips = dialog.locator(':scope > .note-content-end')
+  await expect(chips.locator('.note-open-chip', { hasText: 'Practice' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog.getByRole('group', { name: 'Label note' })).toHaveCount(0)
+
+  const scroller = dialog.locator('.note-modal-body')
+  const actions = dialog.locator(':scope > .editor-actions')
+  const close = dialog.getByRole('button', { name: 'Close', exact: true })
+  await expect(scroller.getByLabel('Title', { exact: true })).toBeVisible()
+  await expect(scroller.locator('.note-content-end, .editor-actions')).toHaveCount(0)
+  await expect(chips).toBeVisible()
+  await expect(actions).toBeVisible()
+  await expect(close).toBeVisible()
+
+  const before = {
+    chips: await chips.boundingBox(),
+    actions: await actions.boundingBox(),
+    close: await close.boundingBox(),
+  }
+  const scrolled = await scroller.evaluate((node) => {
+    const title = node.querySelector('[aria-label="Title"]')
+    const titleBefore = title?.getBoundingClientRect().top ?? 0
+    node.scrollTop = node.scrollHeight
+    const titleAfter = title?.getBoundingClientRect().top ?? 0
+    return {
+      top: node.scrollTop,
+      overflow: node.scrollHeight > node.clientHeight + 20,
+      titleDelta: titleBefore - titleAfter,
+    }
+  })
+  expect(scrolled.overflow).toBe(true)
+  expect(scrolled.top).toBeGreaterThan(20)
+  expect(scrolled.titleDelta).toBeGreaterThan(20)
+
+  const after = {
+    chips: await chips.boundingBox(),
+    actions: await actions.boundingBox(),
+    close: await close.boundingBox(),
+  }
+  expect(Math.abs((after.chips?.y ?? 0) - (before.chips?.y ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((after.actions?.y ?? 0) - (before.actions?.y ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((after.close?.y ?? 0) - (before.close?.y ?? 0))).toBeLessThanOrEqual(1)
+  await expect(chips).toBeVisible()
+  await expect(actions).toBeVisible()
+  await expect(close).toBeVisible()
+})
+
 async function createNote(page: Page, title: string, body: string) {
   await page.getByRole('button', { name: 'Take a note' }).click()
   await page.getByLabel('Title', { exact: true }).fill(title)

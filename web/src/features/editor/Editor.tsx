@@ -1,4 +1,5 @@
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { createPortal } from 'react-dom'
 import type { TracepadDatabase } from '../../data/db'
 import { clearDraft, commitNoteContent, listChecklistTicks, saveDraft, setChecklistTick } from '../../data/notes'
 import { noteHasPendingOutbox } from '../../data/outbox'
@@ -12,6 +13,7 @@ import {
   type NoteContent,
 } from '../../domain/versioning'
 import { noteIdFromCard } from '../board/noteCardIndex'
+import { NoteModalFixedContext } from '../../ui/NoteModal'
 import { IconButton } from '../../ui/icons'
 import { SavingDot, savingDotState } from './SavingDot'
 
@@ -32,6 +34,8 @@ export type EditorHandle = {
    * once the note already exists.
    */
   ensureSaved: () => Promise<void>
+  /** Turn the open note into a checklist, or back into text. Cuts a version. */
+  convertChecklist: () => void
 }
 
 type EditorProps = {
@@ -56,6 +60,8 @@ type EditorProps = {
   showFooter?: boolean
   /** More on a new note from "Take a note". A saved note uses the modal toolbar. */
   more?: ReactNode
+  /** The note's kind, so an open note's More can say Show or Hide checkboxes. */
+  onKindChange?: (kind: NoteKind) => void
   ref?: Ref<EditorHandle>
 }
 
@@ -126,8 +132,10 @@ export function Editor({
   titleAside,
   showFooter = true,
   more,
+  onKindChange,
   ref,
 }: EditorProps) {
+  const fixedSlot = useContext(NoteModalFixedContext)
   const initial = snapshotFrom(openedVersion)
   // Title, body, and items live here. Draft saves and outbox checks never write them back.
   const [title, setTitle] = useState(initial.title)
@@ -155,6 +163,8 @@ export function Editor({
   onTrashRef.current = onTrash
   const onRestoreRef = useRef(onRestore)
   onRestoreRef.current = onRestore
+  const onKindChangeRef = useRef(onKindChange)
+  onKindChangeRef.current = onKindChange
 
   const cardRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -306,11 +316,15 @@ export function Editor({
     )
   }
 
-  useImperativeHandle(ref, () => ({ leave, close: requestClose, ensureSaved }), [
-    leave,
-    requestClose,
-    ensureSaved,
-  ])
+  useImperativeHandle(
+    ref,
+    () => ({ leave, close: requestClose, ensureSaved, convertChecklist: () => convert() }),
+    [leave, requestClose, ensureSaved, convert],
+  )
+
+  useEffect(() => {
+    onKindChangeRef.current?.(kind)
+  }, [kind])
 
   useEffect(() => {
     return () => clearTimer()
@@ -517,6 +531,28 @@ export function Editor({
   const shown = checklistDisplayOrder(items, ticked)
   const openCount = shown.filter((item) => !ticked.has(item.id)).length
 
+  const actionButtons = (
+    <>
+      <IconButton
+        className="editor-checklist-toggle"
+        label={kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
+        icon={kind === 'checklist' ? 'checklistOff' : 'checklistOn'}
+        onClick={convert}
+      />
+      {more}
+      {showFooter ? (
+        <>
+          {trashed ? (
+            <IconButton label="Restore" icon="restore" onClick={() => void onRestoreRef.current?.()} />
+          ) : (
+            <IconButton label="Move to trash" icon="delete" onClick={() => void onTrashRef.current()} />
+          )}
+          <IconButton label="History" icon="history" onClick={openHistory} />
+        </>
+      ) : null}
+    </>
+  )
+
   return (
     <div className="editor" ref={cardRef} role="group" aria-label="Note">
       <SavingDot state={savingDotState(unsaved, pendingSync)} />
@@ -580,26 +616,12 @@ export function Editor({
           onChange={(event) => changeBody(event.target.value)}
         />
       )}
-      {actions}
-      <div className="editor-actions">
-        <IconButton
-          className="editor-checklist-toggle"
-          label={kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
-          icon={kind === 'checklist' ? 'checklistOff' : 'checklistOn'}
-          onClick={convert}
-        />
-        {more}
-        {showFooter ? (
-          <>
-            {trashed ? (
-              <IconButton label="Restore" icon="restore" onClick={() => void onRestoreRef.current?.()} />
-            ) : (
-              <IconButton label="Move to trash" icon="delete" onClick={() => void onTrashRef.current()} />
-            )}
-            <IconButton label="History" icon="history" onClick={openHistory} />
-          </>
-        ) : null}
-      </div>
+      {fixedSlot ? null : actions}
+      {fixedSlot ? (
+        fixedSlot.actionsEl ? createPortal(actionButtons, fixedSlot.actionsEl) : null
+      ) : (
+        <div className="editor-actions">{actionButtons}</div>
+      )}
     </div>
   )
 }

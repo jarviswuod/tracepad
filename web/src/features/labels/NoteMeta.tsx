@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Label, Uuid } from "../../domain/types";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { Label, NoteKind, Uuid } from "../../domain/types";
 import { IconButton } from "../../ui/icons";
 import { NOTE_COLORS } from "./colors";
 import { formatEditedDate } from "./editedDate";
@@ -79,13 +79,17 @@ type NoteToolbarProps = NoteToolbarBase &
         onDelete: () => void;
         onRestore: () => void;
         onDeleteForever: () => void;
+        /** Open note only. The card's More leaves this out. */
+        onChecklist?: () => void;
+        checklistKind?: NoteKind;
       }
   );
 
 /**
  * More, and Close from the modal. Remind me and Archive live in More.
- * On Take a note, More lists only those two. A trashed note has Restore and
- * Delete forever, and no More.
+ * An open note also lists Show checkboxes, or Hide checkboxes on a checklist.
+ * On Take a note, More lists only Remind me and Archive. A trashed note has
+ * Restore and Delete forever, and no More.
  */
 export function NoteToolbar(props: NoteToolbarProps) {
   const { isArchived, onArchive, renderReminder } = props;
@@ -99,6 +103,19 @@ export function NoteToolbar(props: NoteToolbarProps) {
     if (panel !== "labels") return;
     labelInputRef.current?.focus();
   }, [panel]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const popup = rootRef.current?.querySelector<HTMLElement>(".note-more-panel");
+    if (!popup) return;
+    popup.style.maxHeight = "";
+    popup.style.overflowY = "";
+    const box = popup.getBoundingClientRect();
+    if (box.top < 8) {
+      popup.style.maxHeight = `${Math.max(80, box.bottom - 8)}px`;
+      popup.style.overflowY = "auto";
+    }
+  }, [open, panel]);
 
   useEffect(() => {
     if (!open) return;
@@ -219,6 +236,26 @@ export function NoteToolbar(props: NoteToolbarProps) {
                 icon="colors"
                 onClick={() => setPanel("colors")}
               />
+              {props.onChecklist ? (
+                <IconButton
+                  role="menuitem"
+                  className="note-menu-item"
+                  label={
+                    props.checklistKind === "checklist"
+                      ? "Hide checkboxes"
+                      : "Show checkboxes"
+                  }
+                  icon={
+                    props.checklistKind === "checklist"
+                      ? "checklistOff"
+                      : "checklistOn"
+                  }
+                  onClick={() => {
+                    closePanel();
+                    props.onChecklist?.();
+                  }}
+                />
+              ) : null}
               <IconButton
                 role="menuitem"
                 className="note-menu-item"
