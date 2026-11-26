@@ -62,7 +62,7 @@ Use Chrome. DevTools (F12) → **Application → IndexedDB** shows the stored da
 | 1.20 | With the preview open, change any visible text in `web/src`, run `npm run build` again, then come back to the tab                                               | "Update ready, reload" appears; reloading shows the change                                                                                                                       | New versions download in the background (§3).                    |
 | 1.21 | `./tests/run-all.sh`                                                                                                                                            | `All tests passed.`                                                                                                                                                              | The suite still passes.                                          |
 
-**Signed off by:** **\_\_\_\_** **Date:** **\_\_\_\_**
+**Signed off by:** Jarviswuod **Date:** Nov 26 2026 09:09
 
 ---
 
