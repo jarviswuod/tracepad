@@ -23,3 +23,4 @@ Standing rules for any AI agent working on Tracepad.
 1. Always write tests for the feature you're building, before or alongside the code. Then run `./tests/run-all.sh` (details in `tests/README.md`); every test must pass.
 2. Report what changed, what was tested, and anything you couldn't do.
 3. Don't commit. The owner commits each feature after testing it by hand. Suggest a commit message in this style: `feat(web): autosave drafts every 5 seconds`.
+4. If a change affects setup, commands, features, architecture, or workflow, update only those sections of the root `README.md`. Leave the rest, and summarize the README edits. If it's unclear whether the README should change, ask. Don't guess.
