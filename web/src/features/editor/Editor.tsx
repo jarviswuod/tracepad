@@ -390,8 +390,10 @@ export function Editor({
   useLayoutEffect(() => {
     const element = bodyRef.current
     if (!element || kind !== 'text') return
-    element.style.height = 'auto'
-    if (element.scrollHeight > 0) element.style.height = `${element.scrollHeight}px`
+    // Height 0 first, so a capped box still reports the full text height.
+    element.style.height = '0px'
+    const next = element.scrollHeight
+    element.style.height = next > 0 ? `${next}px` : 'auto'
   }, [body, kind])
 
   function changeTitle(value: string) {
@@ -517,6 +519,9 @@ export function Editor({
     })
   }
 
+  const shown = checklistDisplayOrder(items, ticked)
+  const openCount = shown.filter((item) => !ticked.has(item.id)).length
+
   const titleField = (
     <input
       className="editor-title"
@@ -528,34 +533,8 @@ export function Editor({
     />
   )
 
-  const shown = checklistDisplayOrder(items, ticked)
-  const openCount = shown.filter((item) => !ticked.has(item.id)).length
-
-  const actionButtons = (
+  const fields = (
     <>
-      <IconButton
-        className="editor-checklist-toggle"
-        label={kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
-        icon={kind === 'checklist' ? 'checklistOff' : 'checklistOn'}
-        onClick={convert}
-      />
-      {more}
-      {showFooter ? (
-        <>
-          {trashed ? (
-            <IconButton label="Restore" icon="restore" onClick={() => void onRestoreRef.current?.()} />
-          ) : (
-            <IconButton label="Move to trash" icon="delete" onClick={() => void onTrashRef.current()} />
-          )}
-          <IconButton label="History" icon="history" onClick={openHistory} />
-        </>
-      ) : null}
-    </>
-  )
-
-  return (
-    <div className="editor" ref={cardRef} role="group" aria-label="Note">
-      <SavingDot state={savingDotState(unsaved, pendingSync)} />
       {titleAside ? (
         <div className="editor-title-row">
           {titleField}
@@ -616,6 +595,35 @@ export function Editor({
           onChange={(event) => changeBody(event.target.value)}
         />
       )}
+    </>
+  )
+
+  const actionButtons = (
+    <>
+      <IconButton
+        className="editor-checklist-toggle"
+        label={kind === 'checklist' ? 'Hide checkboxes' : 'Show checkboxes'}
+        icon={kind === 'checklist' ? 'checklistOff' : 'checklistOn'}
+        onClick={convert}
+      />
+      {more}
+      {showFooter ? (
+        <>
+          {trashed ? (
+            <IconButton label="Restore" icon="restore" onClick={() => void onRestoreRef.current?.()} />
+          ) : (
+            <IconButton label="Move to trash" icon="delete" onClick={() => void onTrashRef.current()} />
+          )}
+          <IconButton label="History" icon="history" onClick={openHistory} />
+        </>
+      ) : null}
+    </>
+  )
+
+  return (
+    <div className={fixedSlot ? 'editor' : 'editor editor-create'} ref={cardRef} role="group" aria-label="Note">
+      <SavingDot state={savingDotState(unsaved, pendingSync)} />
+      {fixedSlot ? fields : <div className="editor-scroll">{fields}</div>}
       {fixedSlot ? null : actions}
       {fixedSlot ? (
         fixedSlot.actionsEl ? createPortal(actionButtons, fixedSlot.actionsEl) : null

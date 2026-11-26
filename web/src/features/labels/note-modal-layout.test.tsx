@@ -114,6 +114,9 @@ describe('open note layout', () => {
     expect(body.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(chip.compareDocumentPosition(edited) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+    expect(dialog.querySelector('.editor-create')).toBeNull()
+    expect(dialog.querySelector('.editor-scroll')).toBeNull()
+
     const scroller = dialog.querySelector('.note-modal-body')
     const bar = toolbar(dialog)
     const contentEnd = chip.closest('.note-content-end')
@@ -313,8 +316,29 @@ describe('open note layout', () => {
     expect(within(noteGroup).queryByRole('button', { name: 'Pin' })).not.toBeInTheDocument()
     expect(within(noteGroup).queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
 
+    const scroller = noteGroup.querySelector('.editor-scroll')
+    expect(noteGroup).toHaveClass('editor-create')
+    expect(scroller).toContainElement(within(noteGroup).getByLabelText('Title'))
+    expect(scroller).toContainElement(within(noteGroup).getByLabelText('Body'))
+    expect(scroller).not.toContainElement(within(noteGroup).getByRole('button', { name: 'More' }))
+    expect(scroller).not.toContainElement(checklist)
+
     fireEvent.click(within(noteGroup).getByRole('button', { name: 'More' }))
     const menu = within(noteGroup).getByRole('menu', { name: 'More' })
     expect(within(menu).getAllByRole('menuitem').map(controlName)).toEqual(['Remind me', 'Archive'])
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(within(noteGroup).getByRole('button', { name: 'Show checkboxes' }))
+    const list = await within(noteGroup).findByRole('list', { name: 'Checklist' })
+    expect(noteGroup.querySelector('.editor-scroll')).toContainElement(list)
+    expect(noteGroup.querySelector('.editor-scroll')).toContainElement(
+      within(noteGroup).getByRole('button', { name: 'Add item' }),
+    )
+    expect(noteGroup.querySelector(':scope > .editor-actions')).toContainElement(
+      within(noteGroup).getByRole('button', { name: 'Hide checkboxes' }),
+    )
+    expect(noteGroup.querySelector('.editor-scroll')).not.toContainElement(
+      within(noteGroup).getByRole('button', { name: 'Hide checkboxes' }),
+    )
   })
 })
